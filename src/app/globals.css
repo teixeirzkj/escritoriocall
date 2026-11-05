@@ -1,0 +1,200 @@
+@import "tailwindcss";
+
+:root {
+  /* Identidade Frédy: azul-marinho + azul da marca. (--amber = cor de destaque da marca) */
+  --bg: #0e1533;
+  --panel: #131c42;
+  --panel-2: #1a2552;
+  --line: rgba(255, 255, 255, 0.09);
+  --text: #eef2ff;
+  --muted: #9eabd0;
+  --amber: #2b6af3;
+  --teal: #4fc3a1;
+  --coral: #e0564c;
+  --blue: #5b8def;
+  --navy: #1a2140;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-pixel: var(--font-poppins), var(--font-inter), sans-serif;
+  --font-brand: var(--font-poppins), var(--font-inter), sans-serif;
+  --color-amber-brand: var(--amber);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-pixel {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.font-brand {
+  font-family: var(--font-brand);
+}
+
+.input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--line);
+  background: #0b112b;
+  padding: 0 0.875rem;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input::placeholder {
+  color: #646a80;
+}
+.input:focus {
+  border-color: color-mix(in srgb, var(--amber) 70%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 18%, transparent);
+}
+select.input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #9eabd0 50%), linear-gradient(135deg, #9eabd0 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
+}
+
+.btn-primary,
+.btn-ghost,
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  transition: filter 0.15s, background 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+.btn-primary {
+  background: var(--amber);
+  color: #ffffff;
+  box-shadow: 0 2px 0 #1a4cc4, 0 8px 24px -8px rgba(43, 106, 243, 0.6);
+}
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+.btn-primary:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 #1a4cc4;
+}
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+.btn-danger {
+  background: color-mix(in srgb, var(--coral) 16%, transparent);
+  color: #ffb4ad;
+  border: 1px solid color-mix(in srgb, var(--coral) 35%, transparent);
+}
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--coral) 26%, transparent);
+}
+.btn-primary:disabled,
+.btn-ghost:disabled,
+.btn-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+:is(.btn-primary, .btn-ghost, .btn-danger):focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 1.25rem;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.panel-in {
+  animation: panel-in 0.18s ease-out both;
+}
+
+@keyframes pixel-bounce {
+  0%, 100% { transform: translateY(0); box-shadow: 0 0 0 var(--amber); }
+  50% { transform: translateY(-6px); }
+}
+.loader-pixel {
+  display: block;
+  width: 14px;
+  height: 14px;
+  background: var(--amber);
+  box-shadow: 18px 0 var(--teal), 36px 0 var(--coral);
+  margin-right: 36px;
+  animation: pixel-bounce 0.8s steps(4) infinite;
+}
+
+/* Grade sutil de pixels usada em fundos */
+.pixel-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@keyframes react-pop {
+  0% { opacity: 0; transform: scale(0.4); }
+  15% { opacity: 1; transform: scale(1.15); }
+  70% { opacity: 1; transform: scale(1) translateY(-8px); }
+  100% { opacity: 0; transform: scale(1) translateY(-24px); }
+}
+.react-pop {
+  animation: react-pop 2.4s ease-out both;
+}
+
+.mirror-local {
+  transform: scaleX(-1);
+}
+[data-fundo-imagem] .mirror-local {
+  transform: none;
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-in,
+  .loader-pixel {
+    animation: none;
+  }
+}
