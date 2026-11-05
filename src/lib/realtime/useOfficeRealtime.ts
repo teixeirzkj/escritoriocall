@@ -11,6 +11,7 @@ import {
   ch,
   DIR_CODES,
   type ControlMsg,
+  type GameMsg,
   type KnockAnswerMsg,
   type KnockMsg,
   type MoveMsg,
@@ -65,6 +66,10 @@ interface Options {
   onKnockAnswer?: (msg: KnockAnswerMsg) => void;
   /** Soco de brincadeira (de quem, em quem). */
   onPunch?: (fromId: string, toId: string) => void;
+  /** Alguém pulou. */
+  onJump?: (fromId: string) => void;
+  /** Mensagem de jogo (mesas de jogos). */
+  onGame?: (fromId: string, data: GameMsg) => void;
 }
 
 /** Emoji(s) antes do nome no mapa: status (se não for "disponível") e mão levantada. */
@@ -262,6 +267,12 @@ export function useOfficeRealtime(opts: Options) {
         await dm.subscribe("message", (m) => cbRef.current.onChat("dm", m.data as ChatMessage));
         await dm.subscribe("ring", (m) => cbRef.current.onRing?.(m.data as RingMsg));
         await dm.subscribe("knock-answer", (m) => cbRef.current.onKnockAnswer?.(m.data as KnockAnswerMsg));
+        await channel.subscribe("jump", (m) => {
+          if (m.clientId && m.clientId !== myId) cbRef.current.onJump?.(m.clientId);
+        });
+        await channel.subscribe("game", (m) => {
+          if (m.clientId && m.clientId !== myId && m.data && typeof m.data === "object") cbRef.current.onGame?.(m.clientId, m.data as GameMsg);
+        });
         await channel.subscribe("punch", (m) => {
           const to = (m.data as { to?: unknown })?.to;
           if (m.clientId && m.clientId !== myId && typeof to === "string") cbRef.current.onPunch?.(m.clientId, to);
@@ -410,5 +421,12 @@ export function useOfficeRealtime(opts: Options) {
     [myId],
   );
 
-  return { state, roster, reportMove, updatePresence, setRoomChannel, sendReaction, sendPunch };
+  const publishOffice = useCallback((name: string, data: unknown) => {
+    const channel = channelRef.current;
+    if (channel && clientRef.current?.connection.state === "connected") channel.publish(name, data).catch(() => {});
+  }, []);
+  const sendJump = useCallback(() => publishOffice("jump", {}), [publishOffice]);
+  const sendGame = useCallback((data: GameMsg) => publishOffice("game", data), [publishOffice]);
+
+  return { state, roster, reportMove, updatePresence, setRoomChannel, sendReaction, sendPunch, sendJump, sendGame };
 }

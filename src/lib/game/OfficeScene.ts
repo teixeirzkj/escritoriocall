@@ -41,6 +41,7 @@ interface Avatar {
   walking: boolean;
   /** Dentro da piscina (aparece só da cintura para cima). */
   swim: boolean;
+  jumping: boolean;
 }
 
 /** Cena principal do escritório. */
@@ -142,7 +143,7 @@ export class OfficeScene extends Phaser.Scene {
     // Teclado sem capturar teclas (para não atrapalhar campos de texto).
     const kb = this.input.keyboard;
     if (kb) {
-      this.keys = kb.addKeys("W,A,S,D,UP,DOWN,LEFT,RIGHT", false) as Record<string, Phaser.Input.Keyboard.Key>;
+      this.keys = kb.addKeys("W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE", false) as Record<string, Phaser.Input.Keyboard.Key>;
     }
 
     // Ctrl (ou ⌘) + arrastar, ou botão do meio: move o mapa.
@@ -284,6 +285,7 @@ export class OfficeScene extends Phaser.Scene {
       dir: "down",
       walking: false,
       swim: false,
+      jumping: false,
     };
     this.drawIndicators(a);
     return a;
@@ -342,6 +344,7 @@ export class OfficeScene extends Phaser.Scene {
       if (swim) a.sprite.setCrop(0, 0, CHAR_W, Math.round(CHAR_H * 0.62));
       else a.sprite.setCrop();
       this.drawIndicators(a);
+      if (swim) this.splash(x, y);
     }
   }
 
@@ -381,6 +384,9 @@ export class OfficeScene extends Phaser.Scene {
     this.syncRemotes(dt);
     this.flushReactions();
     this.flushPunches();
+    this.flushJumps();
+    // Barra de espaço: pular (na beira da piscina, mergulha).
+    if (this.keys && Phaser.Input.Keyboard.JustDown(this.keys.SPACE) && this.canUseKeys()) this.jumpLocal();
     if (this.deskVersion !== this.bridge.deskVersion) this.drawDeskLabels();
 
     // Raio de proximidade
@@ -432,7 +438,7 @@ export class OfficeScene extends Phaser.Scene {
       this.bridge.pendingTeleport = null;
     }
 
-    const input = this.readInput();
+    const input = this.diving ? { x: 0, y: 0 } : this.readInput();
     const moving = input.x !== 0 || input.y !== 0;
     let dir = L.dir;
     if (moving) {
@@ -546,6 +552,96 @@ export class OfficeScene extends Phaser.Scene {
         duration: 2200,
         ease: "Cubic.easeOut",
         onComplete: () => t.destroy(),
+      });
+    }
+  }
+
+  private canUseKeys() {
+    if (!this.bridge.inputEnabled || this.bridge.locked) return false;
+    const el = typeof document !== "undefined" ? document.activeElement : null;
+    return !(
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      el instanceof HTMLSelectElement ||
+      (el instanceof HTMLElement && el.isContentEditable)
+    );
+  }
+
+  /** Pulo do jogador local. Se estiver na borda olhando para a água, pula para dentro da piscina. */
+  private jumpLocal() {
+    if (this.me.jumping) return;
+    const L = this.bridge.local;
+    const v = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[L.dir];
+    const tx = L.x + v[0] * 56;
+    const ty = L.y + v[1] * 56;
+    if (!inPool(L.x, L.y) && inPool(tx, ty)) {
+      const from = { x: L.x, y: L.y };
+      const prog = { t: 0 };
+      this.diving = true;
+      this.tweens.add({
+        targets: prog,
+        t: 1,
+        duration: 380,
+        ease: "Sine.easeInOut",
+        onUpdate: () => {
+          L.x = from.x + (tx - from.x) * prog.t;
+          L.y = from.y + (ty - from.y) * prog.t;
+        },
+        onComplete: () => {
+          this.diving = false;
+        },
+      });
+    }
+    this.hop(this.me, 380);
+    this.bridge.onLocalJump?.();
+  }
+
+  private diving = false;
+
+  private hop(a: Avatar, duration = 320) {
+    if (a.jumping) return;
+    a.jumping = true;
+    this.tweens.add({
+      targets: a.sprite,
+      y: -22,
+      duration: duration / 2,
+      yoyo: true,
+      ease: "Quad.easeOut",
+      onComplete: () => {
+        a.sprite.setY(0);
+        a.jumping = false;
+      },
+    });
+  }
+
+  private flushJumps() {
+    const q = this.bridge.jumps;
+    if (!q.length) return;
+    this.bridge.jumps = [];
+    for (const id of q) {
+      const a = this.others.get(id);
+      if (a) this.hop(a);
+    }
+  }
+
+  /** Splash ao cair na água. */
+  private splash(x: number, y: number) {
+    const ring = this.add.graphics().setDepth(y + 1);
+    ring.lineStyle(2, 0xffffff, 0.9);
+    ring.strokeEllipse(0, 0, 20, 7);
+    ring.setPosition(x, y - 14);
+    this.tweens.add({ targets: ring, scaleX: 2.4, scaleY: 2.4, alpha: 0, duration: 650, onComplete: () => ring.destroy() });
+    for (let i = 0; i < 7; i++) {
+      const d = this.add.circle(x, y - 16, 2, 0xdff4ff).setDepth(LABEL_DEPTH - 1);
+      const ang = -Math.PI / 2 + (i - 3) * 0.35;
+      this.tweens.add({
+        targets: d,
+        x: x + Math.cos(ang) * (14 + Math.random() * 10),
+        y: y - 16 + Math.sin(ang) * (16 + Math.random() * 10),
+        alpha: 0,
+        duration: 420 + Math.random() * 200,
+        ease: "Quad.easeOut",
+        onComplete: () => d.destroy(),
       });
     }
   }

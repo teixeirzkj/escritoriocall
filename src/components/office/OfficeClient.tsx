@@ -24,6 +24,8 @@ import { ParticipantsPanel, type ParticipantRow } from "./ParticipantsPanel";
 import { PipMeeting } from "./PipMeeting";
 import { DeskPrompt, KnockRequests, RingPrompt } from "./Prompts";
 import { ItemDialog, type Treat } from "./ItemDialog";
+import { type GameBus, GameDialog, type GameTable } from "./games/GameDialog";
+import { INTERACTIONS } from "@/lib/game/map";
 import { RoomPrompt } from "./RoomPrompt";
 import { SettingsDialog } from "./SettingsDialog";
 import { StatusLayer } from "./StatusLayer";
@@ -73,6 +75,9 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
   /** O que estou segurando (café, suco...) ou jogando — aparece antes do nome. */
   const [held, setHeld] = useState<string | null>(null);
   const [itemDialog, setItemDialog] = useState<"fridge" | "coffee" | "vending" | null>(null);
+  /** Mesa de jogo aberta (sinuca, totó, pingue-pongue, fliperama). */
+  const [gameTable, setGameTable] = useState<GameTable | null>(null);
+  const [gameBus] = useState<GameBus>(() => new Set());
   const gameHostRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<GameHandle | null>(null);
   const [gameReady, setGameReady] = useState(false);
@@ -231,8 +236,25 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
     onKnockResolved,
     onKnockAnswer,
     onPunch: (from, to) => onPunchRef.current?.(from, to),
+    onJump: (from) => bridge.pushJump(from),
+    onGame: (from, msg) => {
+      for (const h of gameBus) h(from, msg);
+    },
   });
-  const { reportMove, updatePresence, setRoomChannel, sendReaction, sendPunch } = rt;
+  const { reportMove, updatePresence, setRoomChannel, sendReaction, sendPunch, sendJump, sendGame } = rt;
+
+  // Pulo (barra de espaço) aparece para todos.
+  useEffect(() => {
+    bridge.setHandlers({ onLocalJump: sendJump });
+    return () => bridge.setHandlers({ onLocalJump: null });
+  }, [bridge, sendJump]);
+
+  // Com um jogo aberto, o teclado é do jogo (o personagem não anda nem pula).
+  useEffect(() => {
+    if (!gameTable) return;
+    bridge.setInputEnabled(false);
+    return () => bridge.setInputEnabled(true);
+  }, [bridge, gameTable]);
 
   // ---------------------------------------------------------------------------
   // Mídia (LiveKit)
@@ -301,8 +323,18 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
   useEffect(() => {
     bridge.setLocalMic(media.mic);
     bridge.setLocalBadge(badgeOf({ status, hand, item: held }));
-    updatePresence({ mic: media.mic, cam: media.cam, screen: media.screen, roomId: meetingId, zone: zoneKey, status, hand, item: held });
-  }, [bridge, media.mic, media.cam, media.screen, meetingId, zoneKey, status, hand, held, updatePresence]);
+    updatePresence({
+      mic: media.mic,
+      cam: media.cam,
+      screen: media.screen,
+      roomId: meetingId,
+      zone: zoneKey,
+      status,
+      hand,
+      item: held,
+      game: gameTable?.key ?? null,
+    });
+  }, [bridge, media.mic, media.cam, media.screen, meetingId, zoneKey, status, hand, held, gameTable, updatePresence]);
 
   // O item na mão some depois de 3 minutos.
   useEffect(() => {
@@ -656,7 +688,12 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
         bridge.teleport(it.x, it.y, it.dir);
         if (it.kind === "fridge" || it.kind === "coffee" || it.kind === "vending") setItemDialog(it.kind);
         else if (it.kind === "water") holdItem({ emoji: "💧", label: "Água" });
-        else if (it.kind === "game" && it.emoji) holdItem({ emoji: it.emoji, label: it.label }, "Jogando");
+        else if (it.kind === "game" && it.emoji) {
+          holdItem({ emoji: it.emoji, label: it.label }, "Jogando");
+          if (it.type === "pingPong" || it.type === "foosball" || it.type === "poolTable" || it.type === "arcade") {
+            setGameTable({ key: `${it.type}-${INTERACTIONS.indexOf(it)}`, type: it.type, label: it.label });
+          }
+        }
       },
       onDeskClick: (d) => {
         if (meetingIdRef.current) {
@@ -787,11 +824,12 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
     const onKey = (e: KeyboardEvent) => {
       const el = document.activeElement;
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return;
+      if (gameTable || itemDialog) return;
       if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey && !e.altKey) punchNearest();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [punchNearest]);
+  }, [punchNearest, gameTable, itemDialog]);
 
   // Mãos levantadas na reunião atual (a minha + as da presença).
   const meetingHands = useMemo(() => {
@@ -1084,6 +1122,19 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
         onRetryMedia={media.retry}
         onReload={() => window.location.reload()}
       />
+      {gameTable && (
+        <GameDialog
+          table={gameTable}
+          me={{ id: me.id, name: me.name }}
+          roster={rt.roster}
+          bus={gameBus}
+          send={sendGame}
+          onClose={() => {
+            setGameTable(null);
+            setHeld(null);
+          }}
+        />
+      )}
       {itemDialog && (
         <ItemDialog
           kind={itemDialog}

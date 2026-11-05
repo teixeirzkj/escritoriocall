@@ -13,7 +13,9 @@ Escritório 2D em pixel art onde a equipe anda, se esbarra e conversa por **voz 
 **Mapa e movimento**
 - Mapa top-down com área de trabalho, quatro salas de reunião (12, 6, 4 e 2 lugares), copa, corredor e área de lazer com piscina e salão de jogos.
 - WASD/setas, joystick no celular, colisão com paredes e móveis, zoom, e `Ctrl + arrastar` para mover o mapa.
-- Clique em objetos: sentar em sofás, banquetas e pufes; abrir a geladeira, pegar café ou lanche; jogar sinuca, totó, pingue-pongue e fliperama. Dá para entrar na piscina.
+- Clique em objetos: sentar em sofás, banquetas e pufes; abrir a geladeira, pegar café ou lanche.
+- Jogos de verdade nas mesas: pingue-pongue e totó para 2 pessoas em tempo real (ou contra o computador), sinuca e fliperama com recorde.
+- Piscina: dá para nadar e pular da borda (barra de espaço).
 - Mesa fixa: cada pessoa escolhe a sua e passa a começar o dia sentada nela.
 
 **Áudio e vídeo**

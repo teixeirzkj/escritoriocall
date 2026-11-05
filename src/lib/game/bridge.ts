@@ -71,6 +71,9 @@ export class GameBridge {
   onItemClick: ((i: Interaction) => void) | null = null;
   /** Socos a animar (a cena consome a fila). */
   punches: { from: string; to: string }[] = [];
+  /** Pulos de outras pessoas a animar. */
+  jumps: string[] = [];
+  onLocalJump: (() => void) | null = null;
   /** Reações a mostrar (a cena consome a fila). */
   reactions: { id: string; emoji: string }[] = [];
   /** Nome do dono de cada mesa (índice da mesa → nome, ou ""). */
@@ -94,6 +97,10 @@ export class GameBridge {
 
   setLocalBadge(b: string) {
     this.local.badge = b;
+  }
+  pushJump(id: string) {
+    this.jumps.push(id);
+    if (this.jumps.length > 20) this.jumps.shift();
   }
   pushPunch(from: string, to: string) {
     this.punches.push({ from, to });
@@ -181,7 +188,9 @@ export class GameBridge {
     onSeatClick?: SeatHandler | null;
     onDeskClick?: DeskHandler | null;
     onItemClick?: ((i: Interaction) => void) | null;
+    onLocalJump?: (() => void) | null;
   }) {
+    if (h.onLocalJump !== undefined) this.onLocalJump = h.onLocalJump;
     if (h.onItemClick !== undefined) this.onItemClick = h.onItemClick;
     if (h.onDeskClick !== undefined) this.onDeskClick = h.onDeskClick;
     if (h.onSeatClick !== undefined) this.onSeatClick = h.onSeatClick;

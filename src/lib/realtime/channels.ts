@@ -37,6 +37,8 @@ export interface PresenceData {
   hand?: boolean;
   /** Emoji do que a pessoa está segurando (café, suco...) ou jogando. */
   item?: string | null;
+  /** Mesa de jogo em que está (ex.: "pingPong-0"). */
+  game?: string | null;
   /** Identificador da aba para resolver conexões duplicadas. */
   tab: string;
 }
@@ -56,6 +58,17 @@ export type ControlMsg =
   | { type: "kick"; userId: string; reason?: string }
   | { type: "rooms-updated" }
   | { type: "office-updated" };
+
+/**
+ * Mensagens dos jogos de mesa (pingue-pongue / totó), no canal do escritório.
+ * "host" simula a partida e manda o estado; "guest" manda a posição da raquete.
+ */
+export type GameMsg =
+  | { k: "join"; table: string; to: string }
+  | { k: "start"; table: string; to: string }
+  | { k: "state"; table: string; to: string; s: number[] }
+  | { k: "paddle"; table: string; to: string; y: number }
+  | { k: "leave"; table: string; to: string };
 
 /** Reação rápida (emoji) publicada no canal do escritório. */
 export interface ReactionMsg {
