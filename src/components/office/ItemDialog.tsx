@@ -16,7 +16,7 @@ const MENUS: Record<"fridge" | "coffee" | "vending", { title: string; hint: stri
       { emoji: "🥤", label: "Refrigerante" },
       { emoji: "🧃", label: "Suco" },
       { emoji: "💧", label: "Água" },
-      { emoji: "🧋", label: "Chá gelado" },
+      { emoji: "🍹", label: "Limonada" },
       { emoji: "🥛", label: "Leite" },
       { emoji: "🥪", label: "Sanduíche" },
       { emoji: "🍎", label: "Maçã" },
