@@ -62,8 +62,8 @@ export interface Zone {
  */
 export const ZONES: Zone[] = [
   { key: "sala-principal", label: "Sala Principal", kind: "meeting", x1: 1, y1: 1, x2: 13, y2: 8, defaultCapacity: 12, door: { x: 7.5, y: 11 } },
-  { key: "sala-01", label: "Sala de Reunião 01", kind: "meeting", x1: 15, y1: 1, x2: 23, y2: 8, defaultCapacity: 6, door: { x: 19.5, y: 11 } },
-  { key: "sala-02", label: "Sala de Reunião 02", kind: "meeting", x1: 25, y1: 1, x2: 34, y2: 8, defaultCapacity: 4, door: { x: 29.5, y: 11 } },
+  { key: "sala-01", label: "Sala de Reunião 01", kind: "meeting", x1: 15, y1: 1, x2: 23, y2: 8, defaultCapacity: 12, door: { x: 19.5, y: 11 } },
+  { key: "sala-02", label: "Sala de Reunião 02", kind: "meeting", x1: 25, y1: 1, x2: 34, y2: 8, defaultCapacity: 6, door: { x: 29.5, y: 11 } },
   { key: "sala-03", label: "Sala de Reunião 03", kind: "meeting", x1: 27, y1: 13, x2: 34, y2: 22, defaultCapacity: 2, door: { x: 30.5, y: 11 } },
   { key: "copa", label: "Copa", kind: "kitchen", x1: 19, y1: 13, x2: 25, y2: 22 },
   { key: "trabalho", label: "Área de trabalho", kind: "work", x1: 1, y1: 13, x2: 17, y2: 22 },
@@ -73,15 +73,12 @@ export const ZONES: Zone[] = [
 
 export const MEETING_ZONES = ZONES.filter((z) => z.kind === "meeting");
 
-/**
- * Onde fica a placa com o nome da sala (na parede do corredor, ao lado da porta) e o
- * banner com a logo (dentro da sala), em tiles. A placa é centralizada em `plate`.
- */
-export const ROOM_DECOR: Record<string, { plate: { x: number; y: number }; banner: { x: number; y: number } }> = {
-  "sala-principal": { plate: { x: 10.5, y: 9.45 }, banner: { x: 1.25, y: 2.7 } },
-  "sala-01": { plate: { x: 22.5, y: 9.45 }, banner: { x: 15.2, y: 2.7 } },
-  "sala-02": { plate: { x: 32.5, y: 9.45 }, banner: { x: 25.2, y: 2.7 } },
-  "sala-03": { plate: { x: 28.6, y: 12.45 }, banner: { x: 27.2, y: 15.2 } },
+/** Onde fica a placa com o nome da sala (na parede do corredor, ao lado da porta), em tiles. */
+export const ROOM_DECOR: Record<string, { plate: { x: number; y: number } }> = {
+  "sala-principal": { plate: { x: 11.2, y: 9.45 } },
+  "sala-01": { plate: { x: 23.2, y: 9.45 } },
+  "sala-02": { plate: { x: 32.9, y: 9.45 } },
+  "sala-03": { plate: { x: 28.4, y: 12.45 } },
 };
 export const MEETING_ZONE_KEYS = MEETING_ZONES.map((z) => z.key);
 
@@ -156,6 +153,7 @@ export type ItemType =
   | "chair"
   | "chairUp"
   | "confTableLong"
+  | "confTableMid"
   | "confTable"
   | "roundTable"
   | "sofa"
@@ -215,6 +213,7 @@ export const ITEM_DEFS: Record<ItemType, ItemDef> = {
   chair: { w: 32, h: 32 },
   chairUp: { w: 32, h: 32 },
   confTableLong: { w: 256, h: 96, body: { x: 4, y: 8, w: 248, h: 84 } },
+  confTableMid: { w: 216, h: 96, body: { x: 4, y: 8, w: 208, h: 84 } },
   confTable: { w: 160, h: 64, body: { x: 4, y: 6, w: 152, h: 54 } },
   roundTable: { w: 64, h: 64, body: { x: 8, y: 10, w: 48, h: 46 } },
   sofa: { w: 96, h: 48, body: { x: 2, y: 10, w: 92, h: 34 } },
@@ -307,21 +306,21 @@ export const ITEMS: MapItem[] = [
   { type: "plantSmall", x: 1, y: 7.4 },
   { type: "plantSmall", x: 12, y: 7.4 },
 
-  // ---------- Sala 01 (6 cadeiras) ----------
+  // ---------- Sala 01 (12 cadeiras) ----------
   { type: "tv", x: 18, y: 0 },
-  { type: "rug", x: 16, y: 2.4, tw: 7, th: 5, v: 1 },
-  { type: "confTable", x: 17, y: 4 },
-  ...confChairs([17.3, 19, 20.7], 3, 5.7, 1),
-  { type: "speaker", x: 22.5, y: 3.4 },
+  { type: "rug", x: 15.6, y: 2, tw: 7.8, th: 6, v: 1 },
+  { type: "confTableMid", x: 16.1, y: 3.6 },
+  ...confChairs([16.25, 17.4, 18.55, 19.7, 20.85, 22], 2.6, 6.5, 1),
+  { type: "speaker", x: 22.8, y: 0.9 },
   { type: "plantBig", x: 15.1, y: 0.6 },
   { type: "plantSmall", x: 22.8, y: 7.4 },
 
-  // ---------- Sala 02 (4 cadeiras) ----------
+  // ---------- Sala 02 (6 cadeiras) ----------
   { type: "tv", x: 28, y: 0 },
   { type: "whiteboard", x: 25.5, y: 0 },
   { type: "rug", x: 26.5, y: 2.4, tw: 7, th: 5, v: 2 },
   { type: "confTable", x: 27.5, y: 4 },
-  ...confChairs([28, 30.5], 3, 5.7, 2),
+  ...confChairs([27.8, 29.5, 31.2], 3, 5.7, 2),
   { type: "speaker", x: 33.5, y: 3.4 },
   { type: "plantBig", x: 33.9, y: 0.6 },
   { type: "plantSmall", x: 25.1, y: 7.4 },
@@ -339,8 +338,7 @@ export const ITEMS: MapItem[] = [
 
   // ---------- Corredor ----------
   { type: "painting", x: 4, y: 9, v: 0 },
-  { type: "painting", x: 12, y: 9, v: 1 },
-  { type: "clock", x: 24, y: 9 },
+  { type: "clock", x: 17.4, y: 9 },
   { type: "plantSmall", x: 1, y: 9.8 },
   { type: "plantSmall", x: 34, y: 9.8 },
   { type: "speaker", x: 15.6, y: 8.9 },

@@ -201,8 +201,14 @@ const RUGS = [
   { base: "#2f3d4f", border: "#f0a83a", inner: "#3b4b60" },
 ];
 
-function paintRug(p: P, w: number, h: number, v: number) {
-  const c = RUGS[v % RUGS.length];
+export interface RugPalette {
+  base: string;
+  border: string;
+  inner: string;
+}
+
+function paintRug(p: P, w: number, h: number, v: number, pal?: RugPalette) {
+  const c = pal ?? RUGS[v % RUGS.length];
   p.r(0, 0, w, h, shade(c.base, -0.3));
   p.r(1, 1, w - 2, h - 2, c.base);
   p.r(3, 3, w - 6, h - 6, c.border);
@@ -213,8 +219,8 @@ function paintRug(p: P, w: number, h: number, v: number) {
   }
 }
 
-function paintRugRound(p: P, w: number, h: number, v: number) {
-  const c = RUGS[v % RUGS.length];
+function paintRugRound(p: P, w: number, h: number, v: number, pal?: RugPalette) {
+  const c = pal ?? RUGS[v % RUGS.length];
   p.ellipse(w / 2, h / 2, w / 2, h / 2, shade(c.base, -0.3));
   p.ellipse(w / 2, h / 2, w / 2 - 1, h / 2 - 1, c.base);
   p.ellipse(w / 2, h / 2, w / 2 - 4, h / 2 - 4, c.border);
@@ -817,6 +823,7 @@ function paintItem(p: P, type: ItemType, w: number, h: number, v: number) {
     case "chairUp":
       return paintChair(p, true, v);
     case "confTableLong":
+    case "confTableMid":
       return paintConfTable(p, w, h, 0);
     case "confTable":
       return paintConfTable(p, w, h, 1);
@@ -901,6 +908,55 @@ export function spriteItems(): MapItem[] {
 }
 
 /** Renderiza o fundo completo: pisos, sombras, paredes e itens planos. */
+/**
+ * Piso de uma sala com outra cor (carpete + tapetes dentro dela), para ser posto por cima
+ * do fundo. Retângulo em tiles, inclusive.
+ */
+export function drawRoomFloor(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  floor: string,
+  rug: RugPalette,
+): HTMLCanvasElement {
+  const c = makeCanvas((x2 - x1 + 1) * TILE, (y2 - y1 + 1) * TILE);
+  const ctx = ctx2d(c);
+  ctx.translate(-x1 * TILE, -y1 * TILE);
+  for (let ty = y1; ty <= y2; ty++)
+    for (let tx = x1; tx <= x2; tx++) {
+      const f = FLOOR[ty]?.[tx];
+      if (f === undefined || f === Floor.Wall || f === Floor.Door) continue;
+      paintCarpet(new P(ctx, tx * TILE, ty * TILE, S), tx, ty, floor);
+    }
+  for (const it of ITEMS) {
+    if (it.type !== "rug" && it.type !== "rugRound") continue;
+    if (it.x < x1 || it.x > x2 + 1 || it.y < y1 || it.y > y2 + 1) continue;
+    const w = ((it.tw ?? 1) * TILE) / S;
+    const h = ((it.th ?? 1) * TILE) / S;
+    const p = new P(ctx, it.x * TILE, it.y * TILE, S);
+    if (it.type === "rug") paintRug(p, w, h, it.v ?? 0, rug);
+    else paintRugRound(p, w, h, it.v ?? 0, rug);
+  }
+  // Sombra embaixo das paredes (igual ao fundo)
+  for (let ty = y1; ty <= y2; ty++)
+    for (let tx = x1; tx <= x2; tx++) {
+      if (FLOOR[ty]?.[tx] === Floor.Wall) continue;
+      if (FLOOR[ty - 1]?.[tx] === Floor.Wall) {
+        const g = ctx.createLinearGradient(0, ty * TILE, 0, ty * TILE + 12);
+        g.addColorStop(0, "rgba(20,16,30,0.28)");
+        g.addColorStop(1, "rgba(20,16,30,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(tx * TILE, ty * TILE, TILE, 12);
+      }
+      if (FLOOR[ty]?.[tx - 1] === Floor.Wall) {
+        ctx.fillStyle = "rgba(20,16,30,0.12)";
+        ctx.fillRect(tx * TILE, ty * TILE, 4, TILE);
+      }
+    }
+  return c;
+}
+
 export function drawBackground(): HTMLCanvasElement {
   const c = makeCanvas(WORLD_W, WORLD_H);
   const ctx = ctx2d(c);

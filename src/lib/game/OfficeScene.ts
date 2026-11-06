@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 import { avatarKey, type AvatarConfig } from "@/lib/avatar";
 import { CHAR_H, CHAR_W, DIRS, drawCharacterSheet, frameRect, type Dir } from "./art/characters";
-import { drawBackground, drawItemCanvas, itemTextureKey, spriteItems } from "./art/environment";
+import { drawBackground, drawItemCanvas, drawRoomFloor, itemTextureKey, spriteItems } from "./art/environment";
 import { isRoomTheme, PLAIN_PLATE, ROOM_THEMES } from "@/lib/brand";
 import type { GameBridge } from "./bridge";
 import {
@@ -10,6 +10,7 @@ import {
   inPool,
   INTERACTIONS,
   ITEM_DEFS,
+  ITEMS,
   moveWithCollision,
   nearestFree,
   ROOM_DECOR,
@@ -17,6 +18,7 @@ import {
   WORLD_H,
   WORLD_W,
   zoneAtPoint,
+  zoneByKey,
 } from "./map";
 
 const NAVY = "#0e1533";
@@ -785,52 +787,57 @@ export class OfficeScene extends Phaser.Scene {
 
     for (const r of this.bridge.roomDecor) {
       const spot = ROOM_DECOR[r.zoneKey];
-      if (!spot) continue;
+      const zone = zoneByKey(r.zoneKey);
+      if (!spot || !zone) continue;
       const theme = isRoomTheme(r.theme) ? ROOM_THEMES[r.theme] : null;
       const pal = theme ?? PLAIN_PLATE;
 
-      // Placa
+      // Piso da sala na cor do setor (carpete e tapete).
+      if (theme && r.theme) {
+        const key = `piso:${r.zoneKey}:${r.theme}`;
+        if (!this.textures.exists(key)) {
+          this.textures.addCanvas(key, drawRoomFloor(zone.x1, zone.y1, zone.x2, zone.y2, theme.floor, theme.rug));
+        }
+        this.decorObjs.push(this.add.image(zone.x1 * TILE, zone.y1 * TILE, key).setOrigin(0, 0).setDepth(-9));
+      }
+
+      // Placa com o nome (grande, legível sem aproximar).
       const px = spot.plate.x * TILE;
       const py = spot.plate.y * TILE;
-      const maxW = TILE * 3;
+      const maxW = TILE * 3.8;
       const text = this.add
-        .text(px, py, r.name, { font: '700 9px "Inter", system-ui, sans-serif', color: pal.fg, resolution: 3 })
+        .text(px, py, r.name, { font: '800 13px "Inter", system-ui, sans-serif', color: pal.fg, resolution: 3 })
         .setOrigin(0.5, 0.5);
-      if (text.width + 14 > maxW) text.setScale((maxW - 14) / text.width);
-      const w = Math.min(maxW, text.width * text.scaleX + 14);
-      const h = 15;
+      if (text.width + 16 > maxW) text.setScale((maxW - 16) / text.width);
+      const w = Math.min(maxW, text.width * text.scaleX + 16);
+      const h = 22;
       const g = this.add.graphics();
-      g.fillStyle(0x000000, 0.3).fillRoundedRect(px - w / 2 + 1, py - h / 2 + 2, w, h, 3);
-      g.fillStyle(pal.bg, 1).fillRoundedRect(px - w / 2, py - h / 2, w, h, 3);
-      g.fillStyle(pal.accent, 1).fillRect(px - w / 2 + 4, py + h / 2 - 3, w - 8, 1.5);
+      g.fillStyle(0x000000, 0.35).fillRoundedRect(px - w / 2 + 1, py - h / 2 + 2, w, h, 4);
+      g.fillStyle(pal.bg, 1).fillRoundedRect(px - w / 2, py - h / 2, w, h, 4);
+      g.lineStyle(1.5, pal.accent, 1).strokeRoundedRect(px - w / 2 + 0.75, py - h / 2 + 0.75, w - 1.5, h - 1.5, 4);
       g.setDepth(py + 1);
       text.setDepth(py + 2);
       this.decorObjs.push(g, text);
 
-      // Banner com a logo
+      // Logo na tela da TV da sala.
       if (!theme || !r.theme) continue;
+      const tv = ITEMS.find((it) => it.type === "tv" && it.x >= zone.x1 && it.x <= zone.x2 && it.y <= zone.y1);
+      if (!tv) continue;
       const key = `marca:${r.theme}`;
       if (!this.textures.exists(key)) {
         if (!this.logoFailed.has(key)) toLoad.set(key, theme.logo);
         continue;
       }
-      const BW = 54;
-      const BH = 66;
-      const bx = spot.banner.x * TILE;
-      const by = spot.banner.y * TILE;
-      const b = this.add.graphics();
-      b.fillStyle(0x000000, 0.25).fillEllipse(bx + BW / 2, by + BH, BW + 6, 8);
-      b.fillStyle(0x3a3f4b, 1).fillRoundedRect(bx, by + BH - 6, BW, 6, 2);
-      b.fillStyle(0xffffff, 1).fillRect(bx + 3, by, BW - 6, BH - 6);
-      b.fillStyle(theme.bg, 1).fillRect(bx + 3, by, BW - 6, 7);
-      b.fillStyle(theme.bg, 1).fillRect(bx + 3, by + BH - 16, BW - 6, 10);
-      b.fillStyle(theme.accent, 1).fillRect(bx + 3, by + 7, BW - 6, 1.5);
-      b.lineStyle(1, 0x000000, 0.25).strokeRect(bx + 3, by, BW - 6, BH - 6);
-      b.setDepth(by + BH);
-      const logo = this.add.image(bx + BW / 2, by + 7 + (BH - 6 - 7 - 10) / 2, key);
-      const fit = Math.min((BW - 12) / logo.width, (BH - 30) / logo.height);
-      logo.setScale(fit).setDepth(by + BH + 0.5);
-      this.decorObjs.push(b, logo);
+      // Tela da TV: 96x32 px no item, área útil ~76x20 a partir de (10, 6).
+      const sx = tv.x * TILE + 10;
+      const sy = tv.y * TILE + 6;
+      const sw = 76;
+      const sh = 20;
+      const screen = this.add.graphics().setDepth(-8);
+      screen.fillStyle(0xffffff, 1).fillRect(sx, sy, sw, sh);
+      const logo = this.add.image(sx + sw / 2, sy + sh / 2, key);
+      logo.setScale(Math.min((sw - 6) / logo.width, (sh - 3) / logo.height)).setDepth(-7.5);
+      this.decorObjs.push(screen, logo);
     }
 
     if (toLoad.size) {
@@ -838,7 +845,7 @@ export class OfficeScene extends Phaser.Scene {
       this.load.once("loaderror", (f: { key: string }) => this.logoFailed.add(f.key));
       this.load.once("complete", () => {
         for (const key of toLoad.keys()) {
-          // Logos são fotos: filtro suave (o resto do jogo é pixel art).
+          // Logos são imagens: filtro suave (o resto do jogo é pixel art).
           if (this.textures.exists(key)) this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
           else this.logoFailed.add(key);
         }

@@ -28,11 +28,12 @@ const MENUS: Record<"fridge" | "coffee" | "vending", { title: string; hint: stri
     ],
   },
   coffee: {
-    title: "Cafeteira",
+    title: "Café e chimarrão",
     hint: "Escolha a bebida.",
     items: [
       { emoji: "☕", label: "Café" },
       { emoji: "🥛", label: "Café com leite" },
+      { emoji: "🧉", label: "Chimarrão" },
       { emoji: "🍵", label: "Chá" },
       { emoji: "🍫", label: "Chocolate quente" },
     ],
