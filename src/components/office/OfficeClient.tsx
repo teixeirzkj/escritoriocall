@@ -7,7 +7,7 @@ import type { AvatarConfig } from "@/lib/avatar";
 import { useChat, type ThreadKey } from "@/lib/chat/useChat";
 import { GameBridge } from "@/lib/game/bridge";
 import type { GameHandle } from "@/lib/game/createGame";
-import { DESK_SEATS, freeSeat, SPAWN, TILE, zoneByKey, type Seat } from "@/lib/game/map";
+import { applyOfficeMap, DESK_SEATS, freeSeat, SPAWN, TILE, zoneByKey, type LayoutSpec, type Seat } from "@/lib/game/map";
 import { computeProximity, type ProximityMode } from "@/lib/game/proximity";
 import { useMedia } from "@/lib/media/useMedia";
 import { isMusicZone, type MusicEvent } from "@/lib/music";
@@ -50,7 +50,11 @@ export interface OfficeClientProps {
     maxOnline: number;
     /** Código do link de convite (só para quem administra a sede). */
     inviteCode: string | null;
+    /** Logo da empresa. */
+    logoUrl: string | null;
   };
+  /** Mapa da sede (null = mapa clássico). */
+  layout: LayoutSpec | null;
   rooms: RoomInfo[];
   /** Mesas fixas: índice da mesa → dono. */
   desks: { index: number; userId: string; name: string }[];
@@ -60,7 +64,9 @@ export interface OfficeClientProps {
 
 type Panel = "none" | "participants" | "chat";
 
-export function OfficeClient({ office, rooms, desks, me, settings: initialSettings }: OfficeClientProps) {
+export function OfficeClient({ office, layout, rooms, desks, me, settings: initialSettings }: OfficeClientProps) {
+  // Antes de tudo: o mapa desta sede (salas, mesas, lazer) vira o mapa atual.
+  useState(() => applyOfficeMap(layout));
   const router = useRouter();
   // Quem tem mesa fixa começa sentado nela.
   const [startAt] = useState(() => {
@@ -413,8 +419,11 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
 
   // Placas com o nome e banners com a logo das salas.
   useEffect(() => {
-    bridge.setRoomDecor(rooms.map((r) => ({ zoneKey: r.zoneKey, name: r.name, theme: r.theme })));
-  }, [bridge, rooms]);
+    bridge.setRoomDecor(
+      rooms.map((r) => ({ zoneKey: r.zoneKey, name: r.name, theme: r.theme, logoUrl: r.logoUrl })),
+      office.logoUrl,
+    );
+  }, [bridge, rooms, office.logoUrl]);
 
   // Nomes nas mesas fixas.
   useEffect(() => {
@@ -1179,6 +1188,7 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
 
       <TopBar
         officeName={office.name}
+        officeLogo={office.logoUrl}
         online={connectedCount}
         realtimeState={rt.state}
         mediaStatus={media.status}

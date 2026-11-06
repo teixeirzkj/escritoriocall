@@ -33,6 +33,11 @@ export interface Office {
   proximity_radius: number;
   proximity_mode: ProximityMode;
   max_online: number;
+  /** Configuração do mapa gerado (null = mapa clássico). */
+  layout: unknown;
+  logo_url: string | null;
+  /** Limite de usuários (null = sem limite). */
+  max_members: number | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -53,6 +58,8 @@ export interface Room {
   name: string;
   capacity: number;
   is_private: boolean;
+  theme: string | null;
+  logo_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -92,4 +99,6 @@ export interface RoomInfo {
   lockedBy: string | null;
   /** Identidade visual (placa e banner com logo). */
   theme: string | null;
+  /** Logo do setor (enviada no painel). */
+  logoUrl: string | null;
 }

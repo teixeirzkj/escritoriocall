@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { drawFullScene } from "@/lib/game/art/environment";
-import { WORLD_H, WORLD_W } from "@/lib/game/map";
+import { applyOfficeMap, WORLD_H, WORLD_W } from "@/lib/game/map";
 
 /**
  * Prévia real do mapa do escritório (o mesmo usado no jogo), renderizada no
@@ -17,6 +17,7 @@ export function MapPreview({ className = "" }: { className?: string }) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    applyOfficeMap(null);
     const scene = drawFullScene();
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // Roteiro da câmera: pontos de interesse (px no mundo).

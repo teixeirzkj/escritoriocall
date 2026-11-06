@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { ActionResult } from "@/app/admin/actions";
-import { assertOfficeManager, assertUser, HttpError } from "@/lib/auth";
-import { MEETING_ZONES } from "@/lib/game/map";
+import { assertAdmin, assertOfficeManager, assertUser, HttpError } from "@/lib/auth";
+import { DEFAULT_LAYOUT } from "@/lib/game/map";
 import { newInviteCode, officeSlug } from "@/lib/invite";
 import { rateLimit } from "@/lib/rate-limit";
 import { publishServer } from "@/lib/realtime/ably-server";
@@ -24,11 +24,11 @@ function fail(e: unknown): ActionResult {
 
 const nameSchema = z.string().trim().min(2, "O nome precisa ter pelo menos 2 letras").max(60, "Nome muito longo");
 
-/** Cria uma sede nova: quem cria vira dono(a) e já ganha as salas padrão. */
+/** Cria uma sede interna (só a plataforma): quem cria vira dono(a) e já ganha as salas padrão. */
 export async function createMyOffice(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
   let id: string;
   try {
-    const { user } = await assertUser();
+    const { user } = await assertAdmin();
     if (!rateLimit(`office-create:${user.id}`, 3, 60_000).ok) throw new HttpError(429, "Calma! Tente de novo em instantes.");
     const name = nameSchema.parse(fd.get("name"));
     const admin = supabaseAdmin();
@@ -50,6 +50,7 @@ export async function createMyOffice(_prev: ActionResult, fd: FormData): Promise
           proximity_radius: 208,
           proximity_mode: "fade",
           max_online: 25,
+          layout: DEFAULT_LAYOUT,
           created_by: user.id,
           invite_code: newInviteCode(),
         })
@@ -62,15 +63,10 @@ export async function createMyOffice(_prev: ActionResult, fd: FormData): Promise
     id = office.id;
     const { error: me } = await admin.from("office_members").insert({ office_id: id, user_id: user.id, role: "owner" });
     if (me) throw me;
-    const { error: re } = await admin.from("rooms").insert(
-      MEETING_ZONES.map((zn) => ({
-        office_id: id,
-        zone_key: zn.key,
-        name: zn.label,
-        capacity: zn.defaultCapacity ?? 6,
-        is_private: false,
-      })),
-    );
+    const { error: re } = await admin.from("rooms").insert([
+      { office_id: id, zone_key: "sala-01", name: "Sala de Reunião", capacity: 8, is_private: false },
+      { office_id: id, zone_key: "sala-02", name: "Sala 2", capacity: 4, is_private: false },
+    ]);
     if (re) throw re;
   } catch (e) {
     return fail(e);
@@ -87,7 +83,7 @@ export async function acceptInvite(_prev: ActionResult, fd: FormData): Promise<A
     if (!rateLimit(`invite:${user.id}`, 10, 60_000).ok) throw new HttpError(429, "Calma! Tente de novo em instantes.");
     const code = z.string().regex(/^[a-z0-9]{8,32}$/, "Convite inválido").parse(fd.get("code"));
     const admin = supabaseAdmin();
-    const { data: office } = await admin.from("offices").select("id, slug").eq("invite_code", code).maybeSingle();
+    const { data: office } = await admin.from("offices").select("id, slug, max_members").eq("invite_code", code).maybeSingle();
     if (!office) throw new HttpError(404, "Este convite não vale mais. Peça um link novo a quem te convidou.");
     slug = office.slug as string;
     const { data: member } = await admin
@@ -97,6 +93,14 @@ export async function acceptInvite(_prev: ActionResult, fd: FormData): Promise<A
       .eq("user_id", user.id)
       .maybeSingle();
     if (member?.banned) throw new HttpError(403, "Seu acesso a esta sede foi removido por quem a administra.");
+    if (!member && office.max_members) {
+      const { count } = await admin
+        .from("office_members")
+        .select("user_id", { count: "exact", head: true })
+        .eq("office_id", office.id)
+        .eq("banned", false);
+      if ((count ?? 0) >= office.max_members) throw new HttpError(400, "Esta sede já atingiu o limite de usuários.");
+    }
     if (!member) {
       const { error } = await admin.from("office_members").insert({ office_id: office.id, user_id: user.id, role: "member" });
       if (error && error.code !== "23505") throw error;

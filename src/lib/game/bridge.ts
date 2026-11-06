@@ -8,6 +8,13 @@ import type { AvatarConfig } from "@/lib/avatar";
 import type { Dir } from "./art/characters";
 import { type Interaction, SPAWN } from "./map";
 
+export interface RoomDecorInfo {
+  zoneKey: string;
+  name: string;
+  theme: string | null;
+  logoUrl?: string | null;
+}
+
 export interface RemoteView {
   id: string;
   name: string;
@@ -105,10 +112,13 @@ export class GameBridge {
     this.local.badge = b;
   }
   /** Placas e banners das salas (nome + identidade visual). */
-  roomDecor: { zoneKey: string; name: string; theme: string | null }[] = [];
+  roomDecor: RoomDecorInfo[] = [];
+  /** Logo da empresa (painel na parede da entrada). */
+  officeLogo: string | null = null;
   roomDecorVersion = 0;
-  setRoomDecor(list: { zoneKey: string; name: string; theme: string | null }[]) {
+  setRoomDecor(list: RoomDecorInfo[], officeLogo: string | null = null) {
     this.roomDecor = list;
+    this.officeLogo = officeLogo;
     this.roomDecorVersion++;
   }
   setLocalItem(item: string | null) {

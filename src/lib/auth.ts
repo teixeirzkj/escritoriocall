@@ -9,6 +9,8 @@ import type { Profile } from "@/lib/types";
 export interface SessionUser {
   id: string;
   email: string | null;
+  /** Conta criada com senha provisória: precisa escolher uma senha nova. */
+  mustChangePassword: boolean;
 }
 
 /** Usuário autenticado validado (JWT verificado), ou null. */
@@ -21,7 +23,11 @@ export async function getSessionUser(
   const { data, error } = await sb.auth.getClaims();
   if (error || !data?.claims?.sub) return { user: null, supabase: sb };
   return {
-    user: { id: data.claims.sub, email: (data.claims.email as string | undefined) ?? null },
+    user: {
+      id: data.claims.sub,
+      email: (data.claims.email as string | undefined) ?? null,
+      mustChangePassword: (data.claims.user_metadata as { must_change_password?: boolean } | undefined)?.must_change_password === true,
+    },
     supabase: sb,
   };
 }
@@ -37,6 +43,7 @@ export async function requireUser(nextPath?: string) {
   if (!user) redirect(`/entrar${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`);
   const profile = await getProfile(supabase, user.id);
   if (!profile) redirect("/entrar?erro=perfil");
+  if (user.mustChangePassword) redirect("/nova-senha?primeiro=1");
   return { user, profile, supabase };
 }
 

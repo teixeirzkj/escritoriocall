@@ -70,7 +70,7 @@ export default function Home() {
           <a href="#recursos" className="hidden rounded-lg px-3 py-2 text-[var(--muted)] hover:text-white md:block">Recursos</a>
           <a href="#como-funciona" className="hidden rounded-lg px-3 py-2 text-[var(--muted)] hover:text-white md:block">Como funciona</a>
           <Link href="/entrar" className="rounded-lg px-3 py-2 text-[var(--text)] hover:bg-white/5">Entrar</Link>
-          <Link href="/cadastro" className="btn-primary h-10 px-4 text-sm">Criar conta</Link>
+          <Link href="/escritorio" className="btn-primary h-10 px-4 text-sm">Meu escritório</Link>
         </nav>
       </header>
 
@@ -93,7 +93,6 @@ export default function Home() {
               <Link href="/escritorio" className="btn-primary h-12 px-6">
                 Entrar no escritório <ArrowRight size={18} />
               </Link>
-              <Link href="/cadastro" className="btn-ghost h-12 px-6">Criar conta</Link>
             </div>
             <p className="mt-5 text-xs text-[var(--muted)]">
               Funciona no navegador do computador. No celular, você anda com um joystick na tela.
@@ -192,8 +191,7 @@ export default function Home() {
                 Entre, dê uma volta e chame alguém para um café na copa.
               </p>
               <div className="mt-7 flex flex-wrap justify-center gap-3">
-                <Link href="/cadastro" className="btn-primary h-12 px-6">Criar conta</Link>
-                <Link href="/entrar" className="btn-ghost h-12 px-6">Já tenho conta</Link>
+                <Link href="/entrar" className="btn-primary h-12 px-6">Entrar</Link>
               </div>
             </div>
           </div>

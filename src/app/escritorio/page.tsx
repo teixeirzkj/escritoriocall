@@ -1,4 +1,4 @@
-import { ArrowRight, Building2, Crown, Link2, Plus, Settings, Shield } from "lucide-react";
+import { ArrowRight, Building2, Crown, Plus, Settings, Shield } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Minhas sedes" };
 
 const ERRORS: Record<string, string> = {
   "sem-permissao": "Você não tem permissão para acessar aquela área.",
-  "sem-acesso": "Essa sede é privada. Para entrar, peça o link de convite a quem a administra.",
+  "sem-acesso": "Essa sede é privada. Para entrar, peça acesso ao administrador(a) dela.",
   banido: "Seu acesso àquela sede foi removido por quem a administra.",
 };
 
@@ -47,7 +47,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       <main className="mx-auto max-w-6xl px-5 py-10">
         <h1 className="font-pixel text-3xl text-white sm:text-4xl">Olá, {profile.display_name.split(" ")[0]}!</h1>
         <p className="mt-2 text-[var(--muted)]">
-          {list.length ? "Escolha uma sede para entrar." : "Crie a sua sede ou entre pelo link de convite que alguém te mandou."}
+          {list.length
+            ? "Escolha uma sede para entrar."
+            : "Você ainda não tem acesso a nenhuma sede. Peça ao administrador(a) da sua empresa."}
         </p>
         {error && (
           <div role="alert" className="mt-6 rounded-xl border border-[var(--coral)]/40 bg-[var(--coral)]/10 px-4 py-3 text-sm text-[#ffb4ad]">
@@ -84,7 +86,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                         href={`/admin/escritorios/${o.id}`}
                         className="flex h-8 items-center gap-1.5 rounded-lg bg-white/5 px-2.5 text-xs text-[var(--muted)] hover:bg-white/10 hover:text-white"
                       >
-                        <Settings size={13} /> Personalizar e convidar
+                        <Settings size={13} /> Personalizar e equipe
                       </Link>
                     ) : (
                       <ActionButton
@@ -104,24 +106,23 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             );
           })}
 
-          {/* Criar sede */}
+          {/* Criar sede (só a plataforma: clientes ganham a sede pelo painel) */}
+          {profile.role === "admin" && (
           <div className="card flex flex-col border-dashed p-5">
             <span className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-white/5 text-[var(--amber)]">
               <Plus size={20} />
             </span>
             <h2 className="font-semibold text-white">Criar uma sede</h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              Sua sede é privada: só entra quem você convidar pelo link. Depois você renomeia as salas e personaliza.
+              Uma sede interna. Para um cliente, use Admin → Escritórios → Novo cliente.
             </p>
             <ActionForm action={createMyOffice} submitLabel="Criar sede" pendingLabel="Criando…" className="mt-4 space-y-3" submitClassName="btn-primary h-10 px-4 text-sm">
               <input name="name" required minLength={2} maxLength={60} placeholder="Nome da sede (ex.: Time Comercial)" aria-label="Nome da sede" className="input h-10 text-sm" />
             </ActionForm>
           </div>
+          )}
         </div>
 
-        <p className="mt-8 flex items-center gap-2 text-sm text-[var(--muted)]">
-          <Link2 size={14} /> Recebeu um link de convite? É só abrir o link e clicar em <strong className="text-white">Aceitar convite</strong>.
-        </p>
       </main>
     </div>
   );

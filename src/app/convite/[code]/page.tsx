@@ -71,12 +71,10 @@ export default async function Page({ params }: { params: Promise<{ code: string 
               <div className="mt-7">
                 {!user ? (
                   <div className="space-y-3">
-                    <Link href={`/cadastro?next=${encodeURIComponent(here)}`} className="btn-primary h-11 w-full">
-                      Criar conta e aceitar
+                    <Link href={`/entrar?next=${encodeURIComponent(here)}`} className="btn-primary h-11 w-full">
+                      Entrar para aceitar
                     </Link>
-                    <Link href={`/entrar?next=${encodeURIComponent(here)}`} className="btn-ghost h-11 w-full">
-                      Já tenho conta
-                    </Link>
+                    <p className="text-xs text-[var(--muted)]">Sem conta? Peça o acesso ao administrador(a) da sede.</p>
                   </div>
                 ) : member?.banned ? (
                   <p className="text-sm text-[#ffb4ad]">Seu acesso a esta sede foi removido por quem a administra.</p>

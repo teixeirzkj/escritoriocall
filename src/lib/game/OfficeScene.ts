@@ -2,7 +2,7 @@ import * as Phaser from "phaser";
 import { avatarKey, type AvatarConfig } from "@/lib/avatar";
 import { CHAR_H, CHAR_W, DIRS, drawCharacterSheet, frameRect, type Dir } from "./art/characters";
 import { drawBackground, drawItemCanvas, drawRoomFloor, itemTextureKey, spriteItems } from "./art/environment";
-import { isRoomTheme, PLAIN_PLATE, ROOM_THEMES } from "@/lib/brand";
+import { PLAIN_PLATE, roomPalette } from "@/lib/brand";
 import type { GameBridge } from "./bridge";
 import {
   buildCollisionGrid,
@@ -11,6 +11,7 @@ import {
   INTERACTIONS,
   ITEM_DEFS,
   ITEMS,
+  LOGO_SPOT,
   moveWithCollision,
   nearestFree,
   ROOM_DECOR,
@@ -784,12 +785,19 @@ export class OfficeScene extends Phaser.Scene {
     for (const o of this.decorObjs) o.destroy();
     this.decorObjs = [];
     const toLoad = new Map<string, string>();
+    /** Textura da logo (carrega na primeira vez; devolve null enquanto não chegou). */
+    const logoTex = (url: string) => {
+      const key = `marca:${url}`;
+      if (this.textures.exists(key)) return key;
+      if (!this.logoFailed.has(key)) toLoad.set(key, url);
+      return null;
+    };
 
     for (const r of this.bridge.roomDecor) {
       const spot = ROOM_DECOR[r.zoneKey];
       const zone = zoneByKey(r.zoneKey);
       if (!spot || !zone) continue;
-      const theme = isRoomTheme(r.theme) ? ROOM_THEMES[r.theme] : null;
+      const theme = roomPalette(r.theme);
       const pal = theme ?? PLAIN_PLATE;
 
       // Piso da sala na cor do setor (carpete e tapete).
@@ -804,7 +812,7 @@ export class OfficeScene extends Phaser.Scene {
       // Placa com o nome (grande, legível sem aproximar).
       const px = spot.plate.x * TILE;
       const py = spot.plate.y * TILE;
-      const maxW = TILE * 3.8;
+      const maxW = TILE * (spot.maxW ?? 3.8);
       const text = this.add
         .text(px, py, r.name, { font: '800 13px "Inter", system-ui, sans-serif', color: pal.fg, resolution: 3 })
         .setOrigin(0.5, 0.5);
@@ -819,15 +827,14 @@ export class OfficeScene extends Phaser.Scene {
       text.setDepth(py + 2);
       this.decorObjs.push(g, text);
 
-      // Logo na tela da TV da sala.
-      if (!theme || !r.theme) continue;
-      const tv = ITEMS.find((it) => it.type === "tv" && it.x >= zone.x1 && it.x <= zone.x2 && it.y <= zone.y1);
+      // Logo na tela da TV da sala (a enviada no painel ou a da identidade pronta).
+      const url = r.logoUrl || theme?.logo;
+      if (!url) continue;
+      // TV na parede de cima da própria sala.
+      const tv = ITEMS.find((it) => it.type === "tv" && it.x >= zone.x1 && it.x <= zone.x2 && it.y <= zone.y1 && it.y >= zone.y1 - 1.5);
       if (!tv) continue;
-      const key = `marca:${r.theme}`;
-      if (!this.textures.exists(key)) {
-        if (!this.logoFailed.has(key)) toLoad.set(key, theme.logo);
-        continue;
-      }
+      const key = logoTex(url);
+      if (!key) continue;
       // Tela da TV: 96x32 px no item, área útil ~76x20 a partir de (10, 6).
       const sx = tv.x * TILE + 10;
       const sy = tv.y * TILE + 6;
@@ -840,10 +847,32 @@ export class OfficeScene extends Phaser.Scene {
       this.decorObjs.push(screen, logo);
     }
 
+    // Logo da empresa: painel na parede da área de trabalho (entrada).
+    if (this.bridge.officeLogo && LOGO_SPOT) {
+      const key = logoTex(this.bridge.officeLogo);
+      if (key) {
+        const cx = LOGO_SPOT.x * TILE;
+        const cy = LOGO_SPOT.y * TILE;
+        const pw = LOGO_SPOT.w * TILE;
+        const ph = 26;
+        const g = this.add.graphics().setDepth(cy + 1);
+        g.fillStyle(0x000000, 0.35).fillRoundedRect(cx - pw / 2 + 1, cy - ph / 2 + 2, pw, ph, 4);
+        g.fillStyle(0xffffff, 1).fillRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 4);
+        g.lineStyle(1.5, 0x131c42, 1).strokeRoundedRect(cx - pw / 2 + 0.75, cy - ph / 2 + 0.75, pw - 1.5, ph - 1.5, 4);
+        const img = this.add.image(cx, cy, key).setDepth(cy + 2);
+        img.setScale(Math.min((pw - 10) / img.width, (ph - 5) / img.height));
+        this.decorObjs.push(g, img);
+      }
+    }
+
     if (toLoad.size) {
+      // Logos enviadas ficam no Storage (outro domínio).
+      this.load.setCORS("anonymous");
       for (const [key, url] of toLoad) this.load.image(key, url);
-      this.load.once("loaderror", (f: { key: string }) => this.logoFailed.add(f.key));
+      const onError = (f: { key: string }) => this.logoFailed.add(f.key);
+      this.load.on("loaderror", onError);
       this.load.once("complete", () => {
+        this.load.off("loaderror", onError);
         for (const key of toLoad.keys()) {
           // Logos são imagens: filtro suave (o resto do jogo é pixel art).
           if (this.textures.exists(key)) this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);

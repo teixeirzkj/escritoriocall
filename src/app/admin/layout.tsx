@@ -14,7 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <nav className="flex gap-1 overflow-x-auto md:flex-col" aria-label="Administração">
             <AdminLink href="/admin" icon={<LayoutDashboard size={16} />}>Visão geral</AdminLink>
             <AdminLink href="/admin/usuarios" icon={<Users size={16} />}>Usuários</AdminLink>
-            <AdminLink href="/admin/escritorios" icon={<Building2 size={16} />}>Escritórios</AdminLink>
+            <AdminLink href="/admin/escritorios" icon={<Building2 size={16} />}>Clientes e sedes</AdminLink>
             <AdminLink href="/admin/uso" icon={<BarChart3 size={16} />}>Uso e custos</AdminLink>
           </nav>
         )}

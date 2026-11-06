@@ -9,6 +9,8 @@ import { StatusPicker } from "./StatusPicker";
 
 interface Props {
   officeName: string;
+  /** Logo da empresa (opcional). */
+  officeLogo?: string | null;
   online: number;
   realtimeState: RealtimeState;
   mediaStatus: MediaStatus;
@@ -53,6 +55,10 @@ export function TopBar(p: Props) {
         >
           <ArrowLeft size={18} />
         </Link>
+        {p.officeLogo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={p.officeLogo} alt="" className="h-9 w-9 shrink-0 rounded-lg bg-white object-contain p-0.5" />
+        )}
         <div className="min-w-0">
           <div className="truncate font-pixel text-[15px] leading-tight text-white">{p.officeName}</div>
           <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]">

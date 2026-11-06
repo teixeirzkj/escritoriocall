@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { OfficeClient } from "@/components/office/OfficeClient";
 import { isOfficeManager, requireUser } from "@/lib/auth";
 import { parseAvatar } from "@/lib/avatar";
+import { layoutSpecFor } from "@/lib/office-layout";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { Office, Room, RoomInfo, UserSettings } from "@/lib/types";
 
@@ -51,8 +52,10 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     isPrivate: r.is_private,
     canAccess: manager || !r.is_private || invited.has(r.id),
     lockedBy: ((r as unknown as { locked_by?: string | null }).locked_by ?? null) || null,
-    theme: ((r as unknown as { theme?: string | null }).theme ?? null) || null,
+    theme: r.theme || null,
+    logoUrl: r.logo_url || null,
   }));
+  const layout = layoutSpecFor(office.layout, (rooms ?? []) as Room[]);
 
   // Mesas fixas (nome de quem é dono de cada mesa). Lido com a chave do servidor:
   // a pessoa já foi validada como membro acima.
@@ -87,7 +90,9 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
 
   return (
     <OfficeClient
-      key={office.id}
+      // Mudou a estrutura (salas, mesas, lazer): recria o jogo com o mapa novo.
+      key={`${office.id}:${JSON.stringify(layout)}`}
+      layout={layout}
       office={{
         id: office.id,
         slug: office.slug,
@@ -95,7 +100,9 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         proximityRadius: office.proximity_radius,
         proximityMode: office.proximity_mode,
         maxOnline: office.max_online,
-        inviteCode: manager ? ((office as unknown as { invite_code?: string }).invite_code ?? null) : null,
+        // Cadastro fechado: a equipe entra pelas contas criadas no painel (sem link de convite).
+        inviteCode: null,
+        logoUrl: office.logo_url || null,
       }}
       rooms={roomInfos}
       desks={desks}

@@ -85,7 +85,7 @@ export function LoginForm({ next, notice }: { next: string; notice?: string }) {
       </div>
       <button type="submit" disabled={busy} className="btn-primary h-11 w-full">{busy ? "Entrando…" : "Entrar"}</button>
       <p className="text-center text-sm text-[var(--muted)]">
-        Não tem conta? <Link href={`/cadastro${next !== "/escritorio" ? `?next=${encodeURIComponent(next)}` : ""}`} className="text-[var(--amber)] hover:underline">Criar conta</Link>
+        Não tem conta? O acesso é liberado pelo administrador(a) da sua empresa.
       </p>
     </form>
   );
@@ -203,7 +203,7 @@ export function ForgotForm() {
   );
 }
 
-export function NewPasswordForm() {
+export function NewPasswordForm({ first = false }: { first?: boolean }) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -220,16 +220,23 @@ export function NewPasswordForm() {
         if (!sb) return setError(cfg);
         setBusy(true);
         setError(null);
-        const { error } = await sb.auth.updateUser({ password });
+        const { error } = await sb.auth.updateUser({ password, data: { must_change_password: false } });
+        if (error) {
+          setBusy(false);
+          return setError(translate(error.message));
+        }
+        // Atualiza o token (o aviso de "troque a senha" sai da sessão).
+        await sb.auth.refreshSession();
         setBusy(false);
-        if (error) return setError(translate(error.message));
         router.replace("/escritorio");
         router.refresh();
       }}
     >
       <div>
         <h1 className="font-pixel text-2xl text-white">Nova senha</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">Escolha uma nova senha para sua conta.</p>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          {first ? "Bem-vindo(a)! Antes de entrar, troque a senha provisória por uma sua." : "Escolha uma nova senha para sua conta."}
+        </p>
       </div>
       {error && <Alert tone="error">{error}</Alert>}
       <Field label="Nova senha" type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />

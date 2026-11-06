@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useActionState, useEffect, useRef, useState } from "react";
 import type { ActionResult } from "@/app/admin/actions";
 
 type Action = (prev: ActionResult, fd: FormData) => Promise<ActionResult>;
@@ -40,8 +41,36 @@ export function ActionForm({
             {state.message}
           </span>
         )}
+        {state?.ok && state.href && (
+          <Link href={state.href} className="text-sm font-medium text-[var(--amber)] hover:underline">
+            Abrir →
+          </Link>
+        )}
       </div>
+      {state?.secret && <SecretBox text={state.secret} />}
     </form>
+  );
+}
+
+/** Acesso com senha provisória: aparece uma vez, com botão de copiar. */
+export function SecretBox({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-3 rounded-xl border border-[var(--amber)]/40 bg-[var(--amber)]/10 p-3">
+      <pre className="whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-white">{text}</pre>
+      <div className="mt-2 flex items-center gap-3">
+        <button
+          type="button"
+          className="btn-primary h-8 px-3 text-xs"
+          onClick={() => {
+            void navigator.clipboard?.writeText(text).then(() => setCopied(true));
+          }}
+        >
+          {copied ? "Copiado!" : "Copiar acesso"}
+        </button>
+        <span className="text-[11px] text-[var(--muted)]">A senha não aparece de novo. Copie agora.</span>
+      </div>
+    </div>
   );
 }
 
@@ -63,7 +92,7 @@ export function ActionButton({
   return (
     <form
       action={formAction}
-      className="inline-flex items-center gap-2"
+      className="inline-flex flex-wrap items-center gap-2"
       onSubmit={(e) => {
         if (confirm && !window.confirm(confirm)) e.preventDefault();
       }}
@@ -75,6 +104,11 @@ export function ActionButton({
         {pending ? "…" : label}
       </button>
       {state && !state.ok && !pending && <span className="text-xs text-[#ffb4ad]">{state.message}</span>}
+      {state?.ok && state.secret && !pending && (
+        <span className="block w-full basis-full">
+          <SecretBox text={state.secret} />
+        </span>
+      )}
     </form>
   );
 }

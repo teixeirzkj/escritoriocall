@@ -12,6 +12,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Envio de logos (até 1 MB) pelas Server Actions.
+  experimental: { serverActions: { bodySizeLimit: "2mb" } },
   // Tailwind CSS v4 via loader do Turbopack.
   turbopack: {
     rules: {
