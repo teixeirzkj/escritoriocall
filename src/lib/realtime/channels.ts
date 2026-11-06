@@ -18,6 +18,15 @@ export const lk = {
   room: (officeId: string, roomId: string) => `${officeId}--room--${roomId}`,
 };
 
+/** Sessão de mídia no Cloudflare (o que a pessoa publica): sessão, passe e nome das faixas. */
+export interface RtcInfo {
+  s: string;
+  tk: string;
+  mic?: string;
+  cam?: string;
+  screen?: string;
+}
+
 /** Dados publicados na presença Ably por cada participante. */
 export interface PresenceData {
   name: string;
@@ -41,6 +50,8 @@ export interface PresenceData {
   game?: string | null;
   /** Identificador da aba para resolver conexões duplicadas. */
   tab: string;
+  /** Áudio/vídeo pelo Cloudflare: de onde receber as faixas desta pessoa. */
+  rtc?: RtcInfo | null;
 }
 
 /** Mensagem compacta de movimento. */
@@ -58,7 +69,9 @@ export type ControlMsg =
   | { type: "kick"; userId: string; reason?: string }
   | { type: "rooms-updated" }
   | { type: "office-updated" }
-  | { type: "bookings-updated" };
+  | { type: "bookings-updated" }
+  /** Recomeçar as sessões de mídia (Cloudflare) de quem está nessas salas (null = proximidade). */
+  | { type: "media-reset"; roomIds: (string | null)[] };
 
 /**
  * Mensagens dos jogos de mesa (pingue-pongue / totó), no canal do escritório.

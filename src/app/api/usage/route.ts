@@ -8,7 +8,12 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-const body = z.object({ officeId: z.uuid(), kind: z.enum(["proximity", "meeting"]) });
+const body = z.object({
+  officeId: z.uuid(),
+  kind: z.enum(["proximity", "meeting"]),
+  /** Cloudflare: bytes recebidos no último minuto (no máximo ~1 GB por minuto, contra abuso). */
+  bytes: z.number().int().min(0).max(1_000_000_000).optional(),
+});
 
 /**
  * Registro de uso do LiveKit: o navegador avisa a cada minuto conectado.
@@ -23,11 +28,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: true });
     }
     await assertOfficeMember(supabase, input.officeId, user.id);
-    const { error } = await supabaseAdmin().rpc("bump_media_usage", {
-      p_office: input.officeId,
-      p_user: user.id,
-      p_kind: input.kind,
-    });
+    const { error } =
+      input.bytes === undefined
+        ? await supabaseAdmin().rpc("bump_media_usage", { p_office: input.officeId, p_user: user.id, p_kind: input.kind })
+        : await supabaseAdmin().rpc("bump_media_bytes", {
+            p_office: input.officeId,
+            p_user: user.id,
+            p_kind: input.kind,
+            p_bytes: input.bytes,
+            p_minute: true,
+          });
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (e) {

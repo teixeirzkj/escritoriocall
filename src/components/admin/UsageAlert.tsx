@@ -19,8 +19,12 @@ export function UsageAlert({ alerts }: { alerts: Meter[] }) {
       <AlertTriangle size={18} className="mt-0.5 shrink-0" />
       <span>
         <strong className="text-white">{danger ? "Plano quase no limite" : "Atenção ao uso do plano"}: </strong>
-        {alerts.map((a) => `${a.label} em ${fmt.format(a.pct)}% (${fmt.format(a.used)} de ${fmt.format(a.limit)})`).join(" · ")}.
-        {danger ? " No plano gratuito a voz e o vídeo param ao chegar em 100%. " : " "}
+        {alerts.map((a) => `${a.label} em ${fmt.format(a.pct)}% (${fmt.format(a.used)} de ${fmt.format(a.limit)}${a.key === "cf_gb" ? " GB" : ""})`).join(" · ")}.
+        {danger
+          ? alerts.some((a) => a.key.startsWith("livekit"))
+            ? " No plano gratuito do LiveKit a voz e o vídeo param ao chegar em 100%. "
+            : " Passando do limite, o excedente é cobrado. "
+          : " "}
         <span className="underline">Ver uso e custos</span>
       </span>
     </Link>

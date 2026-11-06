@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { OfficeClient } from "@/components/office/OfficeClient";
 import { isOfficeManager, requireUser } from "@/lib/auth";
 import { parseAvatar } from "@/lib/avatar";
+import { mediaProvider } from "@/lib/env";
 import { layoutSpecFor } from "@/lib/office-layout";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { Office, Room, RoomInfo, UserSettings } from "@/lib/types";
@@ -56,6 +57,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     logoUrl: r.logo_url || null,
   }));
   const layout = layoutSpecFor(office.layout, (rooms ?? []) as Room[]);
+  const provider = mediaProvider();
 
   // Mesas fixas (nome de quem é dono de cada mesa). Lido com a chave do servidor:
   // a pessoa já foi validada como membro acima.
@@ -91,7 +93,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   return (
     <OfficeClient
       // Mudou a estrutura (salas, mesas, lazer): recria o jogo com o mapa novo.
-      key={`${office.id}:${JSON.stringify(layout)}`}
+      key={`${office.id}:${provider}:${JSON.stringify(layout)}`}
       layout={layout}
       office={{
         id: office.id,
@@ -104,6 +106,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         inviteCode: null,
         logoUrl: office.logo_url || null,
         brandBackgrounds: office.slug === "sede",
+        mediaProvider: provider,
       }}
       rooms={roomInfos}
       desks={desks}

@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { assertAdmin, assertOfficeManager, assertUser, getProfile, HttpError } from "@/lib/auth";
-import { MissingEnvError, serverLiveKit } from "@/lib/env";
+import { mediaProvider, MissingEnvError, serverLiveKit } from "@/lib/env";
 import {
   CLASSIC_MEETING_ZONES,
   DEFAULT_LAYOUT,
@@ -55,7 +55,12 @@ async function notify(officeId: string, msg: ControlMsg) {
 }
 
 /** Derruba a mídia de um usuário em todas as salas do escritório. */
-async function dropMedia(officeId: string, userId: string, roomIds: string[]) {
+async function dropMedia(officeId: string, userId: string, roomIds: string[], onlyRooms = false) {
+  if (mediaProvider() === "cloudflare") {
+    // Cloudflare: quem está nesses espaços recomeça a sessão; a pessoa removida não ganha passe novo.
+    await notify(officeId, { type: "media-reset", roomIds: onlyRooms ? roomIds : [null, ...roomIds] });
+    return;
+  }
   let cfg;
   try {
     cfg = serverLiveKit();
@@ -80,8 +85,6 @@ const officeSchema = z.object({
     .toLowerCase()
     .regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/, "Endereço: 3–40 letras minúsculas, números ou hífen"),
   description: z.string().trim().max(280).optional().transform((v) => v || null),
-  // Toda sede é privada (entra só quem tem o link de convite).
-  is_public: z.any().transform(() => false),
   proximity_radius: z.coerce.number().int().min(48, "Raio mínimo: 48").max(480, "Raio máximo: 480"),
   proximity_mode: z.enum(["cutoff", "fade"]),
   max_online: z.coerce.number().int().min(1).max(500),
@@ -103,7 +106,7 @@ export async function createOffice(_prev: ActionResult, fd: FormData): Promise<A
     const data = officeSchema.parse(Object.fromEntries(fd));
     const { data: office, error } = await supabase
       .from("offices")
-      .insert({ ...data, layout: DEFAULT_LAYOUT, invite_code: newInviteCode(), created_by: user.id })
+      .insert({ ...data, is_public: false, layout: DEFAULT_LAYOUT, invite_code: newInviteCode(), created_by: user.id })
       .select("id")
       .single();
     if (error) throw error;
@@ -130,7 +133,8 @@ export async function updateOffice(_prev: ActionResult, fd: FormData): Promise<A
     if (!isAdmin && data.max_online > MAX_ONLINE_OWNER) {
       throw new HttpError(400, `O máximo de pessoas online por sede é ${MAX_ONLINE_OWNER}.`);
     }
-    const row = isAdmin && fd.has("max_members") ? { ...data, max_members } : data;
+    // Toda sede é privada: só entra quem foi cadastrado nela.
+    const row = { ...data, is_public: false, ...(isAdmin && fd.has("max_members") ? { max_members } : {}) };
     const { error } = await supabaseAdmin().from("offices").update(row).eq("id", officeId);
     if (error) throw error;
     await notify(officeId, { type: "office-updated" });
@@ -269,7 +273,7 @@ export async function removeRoomMember(_prev: ActionResult, fd: FormData): Promi
     const { supabase } = await assertOfficeManager(officeId);
     const { error } = await supabase.from("room_members").delete().eq("room_id", roomId).eq("user_id", userId);
     if (error) throw error;
-    await dropMedia(officeId, userId, [roomId]);
+    await dropMedia(officeId, userId, [roomId], true);
     await notify(officeId, { type: "rooms-updated" });
     revalidatePath(`/admin/escritorios/${officeId}`);
     return { ok: true, message: "Acesso removido." };

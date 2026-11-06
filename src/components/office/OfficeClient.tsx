@@ -9,10 +9,11 @@ import { GameBridge } from "@/lib/game/bridge";
 import type { GameHandle } from "@/lib/game/createGame";
 import { applyOfficeMap, DESK_SEATS, freeSeat, SPAWN, TILE, zoneByKey, type LayoutSpec, type Seat } from "@/lib/game/map";
 import { computeProximity, type ProximityMode } from "@/lib/game/proximity";
+import { useCfMedia } from "@/lib/media/useCfMedia";
 import { useMedia } from "@/lib/media/useMedia";
 import { isMusicZone, type MusicEvent } from "@/lib/music";
 import { playChime } from "@/lib/sounds";
-import type { ControlMsg, KnockAnswerMsg, KnockMsg, ReactionMsg, RingMsg } from "@/lib/realtime/channels";
+import type { ControlMsg, KnockAnswerMsg, KnockMsg, ReactionMsg, RingMsg, RtcInfo } from "@/lib/realtime/channels";
 import { badgeOf, useOfficeRealtime } from "@/lib/realtime/useOfficeRealtime";
 import { loadStatus, saveStatus, type StatusKey, statusInfo } from "@/lib/status";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -55,6 +56,8 @@ export interface OfficeClientProps {
     logoUrl: string | null;
     /** Fundos de câmera prontos (só a sede da Tete à tete). */
     brandBackgrounds: boolean;
+    /** Serviço de áudio/vídeo (fixo enquanto o componente existe: a chave inclui o serviço). */
+    mediaProvider: "cloudflare" | "livekit";
   };
   /** Mapa da sede (null = mapa clássico). */
   layout: LayoutSpec | null;
@@ -184,10 +187,12 @@ export function OfficeClient({ office, layout, rooms, desks, me, settings: initi
   // ---------------------------------------------------------------------------
   // Tempo real (Ably)
   // ---------------------------------------------------------------------------
+  const mediaResetRef = useRef<((roomIds: (string | null)[]) => void) | null>(null);
   const onControl = useCallback(
     (msg: ControlMsg) => {
       if (msg?.type === "rooms-updated" || msg?.type === "office-updated") router.refresh();
       if (msg?.type === "bookings-updated") loadBookings();
+      if (msg?.type === "media-reset") mediaResetRef.current?.(msg.roomIds);
     },
     [router, loadBookings],
   );
@@ -327,9 +332,14 @@ export function OfficeClient({ office, layout, rooms, desks, me, settings: initi
     },
     [bridge],
   );
-  const media = useMedia({
+  // O serviço não muda enquanto o componente existe (a chave do componente inclui o serviço).
+  const useMediaHook = office.mediaProvider === "cloudflare" ? useCfMedia : useMedia;
+  const media = useMediaHook({
     officeId: office.id,
     myId: me.id,
+    myName: me.name,
+    roster: rt.roster,
+    publishRtc: (rtc: RtcInfo | null) => updatePresence({ rtc }),
     prefs: {
       audioInputId: settings.audio_input_id,
       videoInputId: settings.video_input_id,
@@ -341,7 +351,13 @@ export function OfficeClient({ office, layout, rooms, desks, me, settings: initi
     onSpeakers,
     onError: (m) => toast(m, "error"),
   });
-  const { setProximity, joinMeeting: mediaJoin, leaveMeeting: mediaLeave, applyVolumes, switchDevice } = media;
+  const { setProximity, joinMeeting: mediaJoin, leaveMeeting: mediaLeave, applyVolumes, switchDevice, resetSession } = media;
+  // Um administrador tirou alguém da sala: quem está nela recomeça a sessão (passes novos).
+  useEffect(() => {
+    mediaResetRef.current = (roomIds) => {
+      if (roomIds.includes(meetingId)) resetSession();
+    };
+  }, [meetingId, resetSession]);
 
   // ---------------------------------------------------------------------------
   // Jogo (Phaser) — carregado só no navegador

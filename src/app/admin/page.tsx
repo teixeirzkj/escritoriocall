@@ -87,7 +87,9 @@ export default async function Page() {
             ["Supabase (autenticação e banco)", status.supabase],
             ["Supabase — chave secreta (gestão de usuários)", status.supabaseSecret],
             ["Ably (presença, movimento e chat)", status.ably],
-            ["LiveKit (áudio, vídeo e tela)", status.livekit],
+            ["Cloudflare Realtime (áudio, vídeo e tela)", status.cloudflare],
+            ["Cloudflare TURN (redes restritas, opcional)", status.cloudflareTurn],
+            ["LiveKit (reserva, se o Cloudflare não estiver configurado)", status.livekit],
           ].map(([label, ok]) => (
             <li key={label as string} className="flex items-center gap-2 rounded-xl bg-white/[0.03] px-3 py-2.5 text-sm">
               {ok ? <CheckCircle2 size={16} className="text-emerald-400" /> : <CircleAlert size={16} className="text-[var(--amber)]" />}

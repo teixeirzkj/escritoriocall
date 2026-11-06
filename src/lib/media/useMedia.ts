@@ -30,13 +30,19 @@ export type MediaStatus =
 
 export type MediaTarget = { kind: "proximity" } | { kind: "room"; roomId: string; ticket?: string };
 
+/** Faixa de vídeo que sabe se ligar a um <video> (faixa do LiveKit ou adaptador do Cloudflare). */
+export interface AttachableTrack {
+  attach(el: HTMLMediaElement): unknown;
+  detach(el: HTMLMediaElement): unknown;
+}
+
 export interface VideoTile {
   key: string;
   identity: string;
   name: string;
   isLocal: boolean;
   source: "camera" | "screen";
-  track: Track;
+  track: AttachableTrack;
 }
 
 export interface MediaParticipant {
@@ -63,6 +69,10 @@ interface Options {
   initialCam: boolean;
   onSpeakers: (ids: Set<string>) => void;
   onError: (msg: string) => void;
+  /** Usados só pelo Cloudflare (ver useCfMedia). */
+  myName?: string;
+  roster?: unknown;
+  publishRtc?: unknown;
 }
 
 /**
@@ -697,6 +707,8 @@ export function useMedia(opts: Options) {
     joinMeeting,
     leaveMeeting,
     retry,
+    /** Só faz sentido no Cloudflare (sessões com passe); aqui não há o que recomeçar. */
+    resetSession: () => {},
   };
 }
 

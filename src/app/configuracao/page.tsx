@@ -17,7 +17,8 @@ export default async function Page() {
     ["Supabase (obrigatório)", s.supabase, "NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"],
     ["Supabase — chave secreta", s.supabaseSecret, "SUPABASE_SECRET_KEY (gestão de usuários)"],
     ["Ably (tempo real)", s.ably, "ABLY_API_KEY"],
-    ["LiveKit (áudio e vídeo)", s.livekit, "LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET"],
+    ["Cloudflare Realtime (áudio e vídeo)", s.cloudflare, "CF_REALTIME_APP_ID e CF_REALTIME_APP_SECRET (TURN opcional: CF_TURN_KEY_ID e CF_TURN_KEY_TOKEN)"],
+    ["LiveKit (reserva de áudio e vídeo)", s.livekit, "LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET"],
   ];
   return (
     <div className="grid min-h-dvh place-items-center px-4 py-10">

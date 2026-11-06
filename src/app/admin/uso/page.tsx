@@ -1,45 +1,57 @@
 import { ExternalLink } from "lucide-react";
 import type { Metadata } from "next";
-import { requireAdmin } from "@/lib/auth";
 import { savePlanLimits } from "@/app/admin/actions";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { Labeled } from "@/components/admin/OfficeFields";
-import { type Meter, monthStart, usageMeters } from "@/lib/plan";
+import { requireAdmin } from "@/lib/auth";
+import { GB, type Meter, monthStart, usageMeters } from "@/lib/plan";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = { title: "Uso e custos" };
 
 const fmt = new Intl.NumberFormat("pt-BR");
-const hours = (min: number) => (min >= 60 ? `${fmt.format(Math.round((min / 60) * 10) / 10)} h` : `${min} min`);
+const fmt1 = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+const hours = (min: number) => (min >= 60 ? `${fmt1.format(min / 60)} h` : `${min} min`);
+/** Tráfego legível (MB até 1 GB). */
+const size = (bytes: number) => (bytes >= GB ? `${fmt1.format(bytes / GB)} GB` : `${fmt1.format(bytes / 1024 ** 2)} MB`);
+
+type Row = { day: string; office_id: string; user_id: string; kind: "proximity" | "meeting"; minutes: number; bytes: number | string | null };
 
 export default async function UsagePage() {
   await requireAdmin();
   const since = monthStart();
   const admin = supabaseAdmin();
-  const [{ data: rows }, { meters, limits, ablyOk, liveOk }, { data: officeRows }] = await Promise.all([
-    admin.from("media_usage").select("day, office_id, user_id, kind, minutes").gte("day", since),
+  const [{ data: rows }, { meters, limits, ablyOk, liveOk, provider }, { data: officeRows }] = await Promise.all([
+    admin.from("media_usage").select("day, office_id, user_id, kind, minutes, bytes").gte("day", since),
     usageMeters(),
     admin.from("offices").select("id, name"),
   ]);
+  const cf = provider === "cloudflare";
+  const usage = ((rows ?? []) as Row[]).map((r) => ({ ...r, bytes: Number(r.bytes ?? 0) }));
+  /** Medida principal: bytes (Cloudflare) ou minutos (LiveKit). */
+  const val = (r: { minutes: number; bytes: number }) => (cf ? r.bytes : r.minutes);
+  const show = (n: number) => (cf ? size(n) : hours(n));
 
-  const usage = (rows ?? []) as { day: string; office_id: string; user_id: string; kind: "proximity" | "meeting"; minutes: number }[];
+  const total = usage.reduce((n, r) => n + val(r), 0);
+  const prox = usage.filter((r) => r.kind === "proximity").reduce((n, r) => n + val(r), 0);
+  const meet = total - prox;
+
   const officeName = new Map((officeRows ?? []).map((o) => [o.id as string, o.name as string]));
   const byOffice = new Map<string, number>();
-  for (const r of usage) byOffice.set(r.office_id, (byOffice.get(r.office_id) ?? 0) + r.minutes);
+  for (const r of usage) byOffice.set(r.office_id, (byOffice.get(r.office_id) ?? 0) + val(r));
   const offices = Array.from(byOffice, ([id, m]) => ({ id, name: officeName.get(id) ?? "Sede excluída", m })).sort((x, y) => y.m - x.m);
+
   // Projeção: ritmo do mês até hoje estendido ao mês inteiro.
   const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  const projected = Math.round((usage.reduce((n, r) => n + r.minutes, 0) / today.getDate()) * daysInMonth);
-  const total = usage.reduce((n, r) => n + r.minutes, 0);
-  const prox = usage.filter((r) => r.kind === "proximity").reduce((n, r) => n + r.minutes, 0);
-  const meet = total - prox;
+  const projected = (total / today.getDate()) * daysInMonth;
+  const limitTotal = cf ? limits.cf_gb * GB : limits.livekit_minutes;
 
   const byUser = new Map<string, { prox: number; meet: number }>();
   for (const r of usage) {
     const u = byUser.get(r.user_id) ?? { prox: 0, meet: 0 };
-    if (r.kind === "proximity") u.prox += r.minutes;
-    else u.meet += r.minutes;
+    if (r.kind === "proximity") u.prox += val(r);
+    else u.meet += val(r);
     byUser.set(r.user_id, u);
   }
   const ids = Array.from(byUser.keys());
@@ -49,10 +61,11 @@ export default async function UsagePage() {
   const nameOf = new Map((profiles ?? []).map((p) => [p.id as string, p.display_name as string]));
   const people = ids
     .map((id) => ({ id, name: nameOf.get(id) ?? "—", ...byUser.get(id)! }))
+    .filter((p) => p.prox + p.meet > 0)
     .sort((a, b) => b.prox + b.meet - (a.prox + a.meet));
 
   const byDay = new Map<string, number>();
-  for (const r of usage) byDay.set(r.day, (byDay.get(r.day) ?? 0) + r.minutes);
+  for (const r of usage) byDay.set(r.day, (byDay.get(r.day) ?? 0) + val(r));
   const days = Array.from(byDay.entries()).sort(([a], [b]) => a.localeCompare(b));
   const maxDay = Math.max(1, ...days.map(([, m]) => m));
 
@@ -61,31 +74,35 @@ export default async function UsagePage() {
       <div>
         <h1 className="font-pixel text-2xl text-white">Uso e custos</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Mês atual (desde {since.split("-").reverse().join("/")}), somando todas as sedes.
+          Mês atual (desde {since.split("-").reverse().join("/")}), somando todas as sedes. Áudio e vídeo pelo{" "}
+          <strong className="text-white">{cf ? "Cloudflare Realtime" : "LiveKit"}</strong>.
         </p>
       </div>
 
       <section className="card p-4">
         <h2 className="mb-1 font-semibold text-white">Uso do plano</h2>
         <p className="mb-4 text-xs text-[var(--muted)]">
-          Aviso no painel ao passar de 70% (amarelo) e de 90% (vermelho). No plano gratuito do LiveKit, ao chegar em 100% a voz e
-          o vídeo param de conectar até virar o mês.
+          Aviso no painel ao passar de 70% (amarelo) e de 90% (vermelho).{" "}
+          {cf
+            ? "No Cloudflare, os primeiros 1.000 GB do mês são grátis; depois, US$ 0,05 por GB (o serviço não para)."
+            : "No plano gratuito do LiveKit, ao chegar em 100% a voz e o vídeo param de conectar até virar o mês."}
         </p>
         <div className="space-y-4">
           {meters.map((m) => (
-            <MeterBar key={m.key} m={m} />
+            <MeterBar key={m.key} m={m} unit={m.key === "cf_gb" ? " GB" : ""} />
           ))}
         </div>
         {!liveOk && <p className="mt-3 text-xs text-[#ff9b92]">Não foi possível consultar o LiveKit agora.</p>}
         {!ablyOk && <p className="mt-1 text-xs text-[#ff9b92]">Não foi possível ler o uso do Ably.</p>}
         <p className="mt-4 text-xs text-[var(--muted)]">
-          No ritmo atual, o mês fecha com cerca de <strong className="text-white">{fmt.format(projected)} min</strong> de LiveKit
-          {" "}({fmt.format(Math.round((projected / limits.livekit_minutes) * 100))}% do limite). Proximidade: {hours(prox)} · reuniões: {hours(meet)}.
+          No ritmo atual, o mês fecha com cerca de <strong className="text-white">{show(Math.round(projected))}</strong> (
+          {fmt.format(Math.round((projected / Math.max(1, limitTotal)) * 100))}% do limite). Proximidade: {show(prox)} · reuniões:{" "}
+          {show(meet)}.
         </p>
       </section>
 
       <section className="card p-4">
-        <h2 className="mb-3 font-semibold text-white">Minutos de LiveKit por sede</h2>
+        <h2 className="mb-3 font-semibold text-white">{cf ? "Tráfego por sede" : "Minutos de LiveKit por sede"}</h2>
         {offices.length === 0 ? (
           <p className="text-sm text-[var(--muted)]">Ainda sem registros neste mês.</p>
         ) : (
@@ -94,7 +111,7 @@ export default async function UsagePage() {
               <li key={o.id} className="flex items-center justify-between gap-3 py-2">
                 <span className="text-white">{o.name}</span>
                 <span className="tabular-nums text-[var(--muted)]">
-                  {hours(o.m)} · {fmt.format(Math.round((o.m / Math.max(1, total)) * 100))}%
+                  {show(o.m)} · {fmt.format(Math.round((o.m / Math.max(1, total)) * 100))}%
                 </span>
               </li>
             ))}
@@ -105,10 +122,13 @@ export default async function UsagePage() {
       <section className="card p-4">
         <h2 className="mb-1 font-semibold text-white">Limites do plano contratado</h2>
         <p className="mb-4 text-xs text-[var(--muted)]">
-          Já preenchidos com os planos gratuitos. Ao mudar de plano no LiveKit ou no Ably, atualize aqui para os avisos ficarem certos.
+          Já preenchidos com os planos gratuitos. Ao mudar de plano, atualize aqui para os avisos ficarem certos.
         </p>
         <ActionForm action={savePlanLimits} submitLabel="Salvar limites" className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
+            <Labeled label="Cloudflare · GB por mês">
+              <input name="cf_gb" type="number" min={1} required defaultValue={limits.cf_gb} className="input h-10 text-sm" />
+            </Labeled>
             <Labeled label="LiveKit · minutos por mês">
               <input name="livekit_minutes" type="number" min={1} required defaultValue={limits.livekit_minutes} className="input h-10 text-sm" />
             </Labeled>
@@ -138,7 +158,7 @@ export default async function UsagePage() {
               <li key={day} className="flex items-center gap-3 text-xs">
                 <span className="w-12 shrink-0 tabular-nums text-[var(--muted)]">{day.slice(8, 10)}/{day.slice(5, 7)}</span>
                 <span className="h-3 rounded bg-[var(--amber)]" style={{ width: `${Math.max(2, (m / maxDay) * 100)}%` }} />
-                <span className="shrink-0 tabular-nums text-white">{hours(m)}</span>
+                <span className="shrink-0 tabular-nums text-white">{show(m)}</span>
               </li>
             ))}
           </ul>
@@ -163,9 +183,9 @@ export default async function UsagePage() {
               {people.map((p) => (
                 <tr key={p.id}>
                   <td className="px-4 py-2 text-white">{p.name}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-[var(--muted)]">{hours(p.prox)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-[var(--muted)]">{hours(p.meet)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-white">{hours(p.prox + p.meet)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-[var(--muted)]">{show(p.prox)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-[var(--muted)]">{show(p.meet)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-white">{show(p.prox + p.meet)}</td>
                 </tr>
               ))}
             </tbody>
@@ -174,6 +194,9 @@ export default async function UsagePage() {
       </section>
 
       <section className="flex flex-wrap gap-2 text-sm">
+        <a href="https://dash.cloudflare.com/?to=/:account/realtime/sfu" target="_blank" rel="noreferrer noopener" className="btn-ghost h-9 px-3">
+          Painel do Cloudflare <ExternalLink size={14} />
+        </a>
         <a href="https://cloud.livekit.io" target="_blank" rel="noreferrer noopener" className="btn-ghost h-9 px-3">
           Painel do LiveKit <ExternalLink size={14} />
         </a>
@@ -182,21 +205,24 @@ export default async function UsagePage() {
         </a>
       </section>
       <p className="text-xs text-[var(--muted)]">
-        Os minutos do LiveKit são medidos pelo próprio site (um registro por minuto conectado) e podem diferir um pouco da
-        fatura. A contagem começou na data em que este painel foi publicado.
+        {cf
+          ? "O tráfego é medido pelo próprio site (o que cada navegador recebeu, a cada minuto) e pode diferir um pouco da fatura do Cloudflare."
+          : "Os minutos do LiveKit são medidos pelo próprio site (um registro por minuto conectado) e podem diferir um pouco da fatura."}
       </p>
     </div>
   );
 }
 
-function MeterBar({ m }: { m: Meter }) {
+function MeterBar({ m, unit = "" }: { m: Meter; unit?: string }) {
   const color = m.level === "danger" ? "bg-[var(--coral)]" : m.level === "warn" ? "bg-amber-400" : "bg-emerald-400";
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
         <span className="text-white">{m.label}</span>
         <span className="tabular-nums text-[var(--muted)]">
-          {fmt.format(m.used)} de {fmt.format(m.limit)} · <strong className="text-white">{fmt.format(m.pct)}%</strong>
+          {fmt1.format(m.used)}
+          {unit} de {fmt.format(m.limit)}
+          {unit} · <strong className="text-white">{fmt1.format(m.pct)}%</strong>
         </span>
       </div>
       <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-white/10" role="meter" aria-valuenow={m.pct} aria-valuemin={0} aria-valuemax={100} aria-label={m.label}>

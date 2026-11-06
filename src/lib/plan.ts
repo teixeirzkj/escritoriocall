@@ -1,7 +1,7 @@
 import "server-only";
 import { RoomServiceClient } from "livekit-server-sdk";
 import { z } from "zod";
-import { serverLiveKit } from "@/lib/env";
+import { mediaProvider, serverLiveKit } from "@/lib/env";
 import { ablyRest } from "@/lib/realtime/ably-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -12,6 +12,8 @@ export const planLimitsSchema = z.object({
   ably_messages: z.coerce.number().int().min(1),
   ably_connections: z.coerce.number().int().min(1),
   ably_channels: z.coerce.number().int().min(1),
+  /** Cloudflare Realtime: GB recebidos por mês (1.000 grátis). */
+  cf_gb: z.coerce.number().int().min(1).default(1000),
 });
 export type PlanLimits = z.infer<typeof planLimitsSchema>;
 export const FREE_LIMITS: PlanLimits = {
@@ -20,6 +22,7 @@ export const FREE_LIMITS: PlanLimits = {
   ably_messages: 6_000_000,
   ably_connections: 200,
   ably_channels: 200,
+  cf_gb: 1000,
 };
 
 export type Level = "ok" | "warn" | "danger";
@@ -73,10 +76,15 @@ async function liveKitNow() {
   }
 }
 
-async function liveKitMonthMinutes(): Promise<number> {
-  const { data } = await supabaseAdmin().from("media_usage").select("minutes").gte("day", monthStart());
-  return (data ?? []).reduce((n, r) => n + (r.minutes as number), 0);
+async function monthMedia(): Promise<{ minutes: number; bytes: number }> {
+  const { data } = await supabaseAdmin().from("media_usage").select("minutes, bytes").gte("day", monthStart());
+  return (data ?? []).reduce(
+    (acc, r) => ({ minutes: acc.minutes + ((r.minutes as number) ?? 0), bytes: acc.bytes + Number(r.bytes ?? 0) }),
+    { minutes: 0, bytes: 0 },
+  );
 }
+
+export const GB = 1024 ** 3;
 
 function meter(key: keyof PlanLimits, label: string, hint: string, used: number, limit: number): Meter {
   const pct = Math.round((used / Math.max(1, limit)) * 1000) / 10;
@@ -84,12 +92,29 @@ function meter(key: keyof PlanLimits, label: string, hint: string, used: number,
 }
 
 /** Uso do mês x limites do plano. */
-export async function usageMeters(): Promise<{ meters: Meter[]; limits: PlanLimits; ablyOk: boolean; liveOk: boolean }> {
-  const [limits, minutes, ably, live] = await Promise.all([getPlanLimits(), liveKitMonthMinutes(), ablyMonth(), liveKitNow()]);
-  const meters: Meter[] = [
-    meter("livekit_minutes", "LiveKit · minutos no mês", "voz e vídeo (proximidade + reuniões), todas as sedes", minutes, limits.livekit_minutes),
-  ];
-  if (live !== null) meters.push(meter("livekit_concurrent", "LiveKit · conectados agora", "pessoas no áudio/vídeo neste momento", live, limits.livekit_concurrent));
+export async function usageMeters(): Promise<{
+  meters: Meter[];
+  limits: PlanLimits;
+  ablyOk: boolean;
+  liveOk: boolean;
+  provider: "cloudflare" | "livekit";
+}> {
+  const provider = mediaProvider();
+  const [limits, media, ably, live] = await Promise.all([
+    getPlanLimits(),
+    monthMedia(),
+    ablyMonth(),
+    provider === "livekit" ? liveKitNow() : Promise.resolve(null),
+  ]);
+  const meters: Meter[] = [];
+  if (provider === "cloudflare") {
+    // Em GB com uma casa decimal (o medidor guarda números inteiros de décimos).
+    const gb = Math.round((media.bytes / GB) * 10) / 10;
+    meters.push(meter("cf_gb", "Cloudflare · GB recebidos no mês", "voz, vídeo e tela que as pessoas receberam (todas as sedes)", gb, limits.cf_gb));
+  } else {
+    meters.push(meter("livekit_minutes", "LiveKit · minutos no mês", "voz e vídeo (proximidade + reuniões), todas as sedes", media.minutes, limits.livekit_minutes));
+    if (live !== null) meters.push(meter("livekit_concurrent", "LiveKit · conectados agora", "pessoas no áudio/vídeo neste momento", live, limits.livekit_concurrent));
+  }
   if (ably) {
     meters.push(
       meter("ably_messages", "Ably · mensagens no mês", "movimento, presença, chat e avisos", ably.messages, limits.ably_messages),
@@ -97,7 +122,7 @@ export async function usageMeters(): Promise<{ meters: Meter[]; limits: PlanLimi
       meter("ably_channels", "Ably · pico de canais", "canais abertos ao mesmo tempo (no mês)", ably.channels, limits.ably_channels),
     );
   }
-  return { meters, limits, ablyOk: ably !== null, liveOk: live !== null };
+  return { meters, limits, ablyOk: ably !== null, liveOk: provider === "cloudflare" || live !== null, provider };
 }
 
 let cache: { at: number; meters: Meter[] } | null = null;

@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { serverLiveKit } from "@/lib/env";
+import { serverSigningSecret } from "@/lib/env";
 
 /**
  * Passe para entrar numa sala trancada (dado quando alguém de dentro abre a porta).
@@ -9,7 +9,7 @@ import { serverLiveKit } from "@/lib/env";
 const TTL_MS = 120_000;
 
 function sign(roomId: string, userId: string, exp: number) {
-  return createHmac("sha256", serverLiveKit().apiSecret).update(`knock:${roomId}:${userId}:${exp}`).digest("base64url");
+  return createHmac("sha256", serverSigningSecret()).update(`knock:${roomId}:${userId}:${exp}`).digest("base64url");
 }
 
 export function issueRoomTicket(roomId: string, userId: string): string {
