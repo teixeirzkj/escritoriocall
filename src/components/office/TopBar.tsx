@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, CalendarDays, Crosshair, MapPin, Minus, Plus, Shield } from "lucide-react";
+import { ArrowLeft, CalendarDays, Crosshair, MapPin, Minus, Plus, Shield, UserPlus } from "lucide-react";
 import Link from "next/link";
 import type { MediaStatus } from "@/lib/media/useMedia";
 import type { RealtimeState } from "@/lib/realtime/useOfficeRealtime";
@@ -22,6 +22,8 @@ interface Props {
   status: StatusKey;
   onStatus: (s: StatusKey) => void;
   onAgenda: () => void;
+  /** Convidar pessoas (só para quem administra). */
+  onInvite: (() => void) | null;
   /** Minhas reuniões de hoje (ainda por acontecer). */
   agendaCount: number;
 }
@@ -75,6 +77,18 @@ export function TopBar(p: Props) {
       </div>
 
       <div className="pointer-events-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+        {p.onInvite && (
+          <button
+            type="button"
+            onClick={p.onInvite}
+            className="flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-[#131c42]/90 px-2.5 text-xs text-[var(--text)] shadow-xl backdrop-blur hover:bg-white/10 sm:px-3"
+            aria-label="Convidar pessoas para a sede"
+            title="Convidar pessoas"
+          >
+            <UserPlus size={15} className="text-[var(--amber)]" />
+            <span className="hidden sm:inline">Convidar</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={p.onAgenda}

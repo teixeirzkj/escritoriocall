@@ -155,7 +155,7 @@ export function SignupForm({ next }: { next: string }) {
       <p className="-mt-2 text-xs text-[var(--muted)]">Mínimo de 8 caracteres.</p>
       <button type="submit" disabled={busy} className="btn-primary h-11 w-full">{busy ? "Criando…" : "Criar conta"}</button>
       <p className="text-center text-sm text-[var(--muted)]">
-        Já tem conta? <Link href="/entrar" className="text-[var(--amber)] hover:underline">Entrar</Link>
+        Já tem conta? <Link href={`/entrar${next !== "/escritorio" ? `?next=${encodeURIComponent(next)}` : ""}`} className="text-[var(--amber)] hover:underline">Entrar</Link>
       </p>
     </form>
   );

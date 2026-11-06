@@ -1,13 +1,13 @@
 import type { Office } from "@/lib/types";
 
 /** Campos do formulário de escritório (criar/editar). */
-export function OfficeFields({ office }: { office?: Office }) {
+export function OfficeFields({ office, isAdmin = true }: { office?: Office; isAdmin?: boolean }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Labeled label="Nome">
         <input name="name" required minLength={2} maxLength={60} defaultValue={office?.name} className="input h-10 text-sm" />
       </Labeled>
-      <Labeled label="Endereço (slug)" hint="Aparece na URL: /escritorio/endereco">
+      <Labeled label="Endereço" hint="Aparece na URL: /escritorio/endereco">
         <input name="slug" required pattern="[a-z0-9][a-z0-9\-]{1,38}[a-z0-9]" defaultValue={office?.slug} className="input h-10 text-sm" placeholder="minha-equipe" />
       </Labeled>
       <Labeled label="Descrição" className="sm:col-span-2">
@@ -23,12 +23,8 @@ export function OfficeFields({ office }: { office?: Office }) {
         </select>
       </Labeled>
       <Labeled label="Máximo de pessoas online">
-        <input name="max_online" type="number" min={1} max={500} required defaultValue={office?.max_online ?? 50} className="input h-10 text-sm" />
+        <input name="max_online" type="number" min={1} max={isAdmin ? 500 : 50} required defaultValue={Math.min(office?.max_online ?? 25, isAdmin ? 500 : 50)} className="input h-10 text-sm" />
       </Labeled>
-      <label className="flex items-center gap-2 self-end pb-2 text-sm text-white">
-        <input type="checkbox" name="is_public" defaultChecked={office?.is_public ?? true} className="h-4 w-4 accent-[var(--amber)]" />
-        Aberto: qualquer pessoa cadastrada pode entrar
-      </label>
     </div>
   );
 }

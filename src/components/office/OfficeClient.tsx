@@ -18,6 +18,7 @@ import { loadStatus, saveStatus, type StatusKey, statusInfo } from "@/lib/status
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { RoomInfo, UserSettings } from "@/lib/types";
 import { BackgroundDialog } from "./BackgroundDialog";
+import { InviteLink } from "@/components/admin/InviteLink";
 import { ChatPanel } from "./ChatPanel";
 import { ControlBar } from "./ControlBar";
 import { ParticipantsPanel, type ParticipantRow } from "./ParticipantsPanel";
@@ -47,6 +48,8 @@ export interface OfficeClientProps {
     proximityRadius: number;
     proximityMode: ProximityMode;
     maxOnline: number;
+    /** Código do link de convite (só para quem administra a sede). */
+    inviteCode: string | null;
   };
   rooms: RoomInfo[];
   /** Mesas fixas: índice da mesa → dono. */
@@ -130,6 +133,7 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
   // Agenda das salas
   // ---------------------------------------------------------------------------
   const [agendaOpen, setAgendaOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
   /** Relógio da agenda (atualiza a cada 20 s). */
@@ -1148,6 +1152,7 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
         status={status}
         onStatus={changeStatus}
         onAgenda={() => setAgendaOpen(true)}
+        onInvite={office.inviteCode ? () => setInviteOpen(true) : null}
         agendaCount={myTodayCount}
       />
 
@@ -1331,6 +1336,28 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
             holdItem(t);
           }}
         />
+      )}
+      {inviteOpen && office.inviteCode && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 p-3 backdrop-blur-sm" onClick={() => setInviteOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Convidar para a sede"
+            className="panel-in w-full max-w-lg rounded-2xl border border-white/10 bg-[#131c42] p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="font-semibold text-white">Convidar para {office.name}</h2>
+            <p className="mb-4 mt-1 text-sm text-[var(--muted)]">
+              A sede é privada. Mande este link: a pessoa cria a conta (ou entra) e clica em “Aceitar convite”.
+            </p>
+            <InviteLink code={office.inviteCode} officeName={office.name} />
+            <div className="mt-4 flex justify-end">
+              <button type="button" onClick={() => setInviteOpen(false)} className="btn-ghost h-9 px-4 text-sm">
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {agendaOpen && (
         <AgendaDialog

@@ -45,8 +45,8 @@ const FEATURES = [
   {
     icon: ShieldCheck,
     color: "#9aa0b4",
-    title: "Controle para quem administra",
-    text: "Crie escritórios e salas, ajuste capacidades, defina quem entra nas salas privadas e veja quem está online.",
+    title: "Sua sede, só para quem você convidar",
+    text: "Crie a sua sede, renomeie as salas e mande o link de convite. Ninguém mais vê: cada time tem a sua, como servidores.",
   },
 ];
 

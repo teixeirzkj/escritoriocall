@@ -4,7 +4,7 @@ import { RoomServiceClient } from "livekit-server-sdk";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { assertAdmin, assertOfficeManager, HttpError } from "@/lib/auth";
+import { assertAdmin, assertOfficeManager, assertUser, getProfile, HttpError } from "@/lib/auth";
 import { MissingEnvError, serverLiveKit } from "@/lib/env";
 import { MEETING_ZONE_KEYS, MEETING_ZONES } from "@/lib/game/map";
 import { publishServer } from "@/lib/realtime/ably-server";
@@ -49,6 +49,9 @@ async function dropMedia(officeId: string, userId: string, roomIds: string[]) {
 
 const bool = z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean());
 
+/** Limite de pessoas online numa sede criada por usuário (controle de custo). */
+const MAX_ONLINE_OWNER = 50;
+
 const officeSchema = z.object({
   name: z.string().trim().min(2, "Nome muito curto").max(60),
   slug: z
@@ -57,7 +60,8 @@ const officeSchema = z.object({
     .toLowerCase()
     .regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/, "Endereço: 3–40 letras minúsculas, números ou hífen"),
   description: z.string().trim().max(280).optional().transform((v) => v || null),
-  is_public: bool,
+  // Toda sede é privada (entra só quem tem o link de convite).
+  is_public: z.any().transform(() => false),
   proximity_radius: z.coerce.number().int().min(48, "Raio mínimo: 48").max(480, "Raio máximo: 480"),
   proximity_mode: z.enum(["cutoff", "fade"]),
   max_online: z.coerce.number().int().min(1).max(500),
@@ -99,8 +103,12 @@ export async function createOffice(_prev: ActionResult, fd: FormData): Promise<A
 export async function updateOffice(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
     const officeId = z.uuid().parse(fd.get("officeId"));
-    const { supabase } = await assertOfficeManager(officeId);
+    const { supabase, user } = await assertOfficeManager(officeId);
     const data = officeSchema.parse(Object.fromEntries(fd));
+    const profile = await getProfile(supabase, user.id);
+    if (profile?.role !== "admin" && data.max_online > MAX_ONLINE_OWNER) {
+      throw new HttpError(400, `O máximo de pessoas online por sede é ${MAX_ONLINE_OWNER}.`);
+    }
     const { error } = await supabase.from("offices").update(data).eq("id", officeId);
     if (error) throw error;
     await notify(officeId, { type: "office-updated" });
@@ -111,17 +119,36 @@ export async function updateOffice(_prev: ActionResult, fd: FormData): Promise<A
   }
 }
 
+/** Papel da pessoa na sede (ou null). */
+async function roleIn(officeId: string, userId: string) {
+  const { data } = await supabaseAdmin()
+    .from("office_members")
+    .select("role, banned")
+    .eq("office_id", officeId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return data && !data.banned ? (data.role as "member" | "moderator" | "owner") : null;
+}
+
+/** Excluir a sede: dono(a) da sede ou administrador da plataforma. */
 export async function deleteOffice(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  let isAdmin = false;
   try {
     const officeId = z.uuid().parse(fd.get("officeId"));
-    const { supabase } = await assertAdmin();
-    const { error } = await supabase.from("offices").delete().eq("id", officeId);
+    const { user, supabase } = await assertUser();
+    isAdmin = (await getProfile(supabase, user.id))?.role === "admin";
+    if (!isAdmin && (await roleIn(officeId, user.id)) !== "owner") {
+      throw new HttpError(403, "Só o dono(a) da sede pode excluí-la.");
+    }
+    await notify(officeId, { type: "office-updated" });
+    const { error } = await supabaseAdmin().from("offices").delete().eq("id", officeId);
     if (error) throw error;
   } catch (e) {
     return fail(e);
   }
+  revalidatePath("/escritorio");
   revalidatePath("/admin/escritorios");
-  redirect("/admin/escritorios");
+  redirect(isAdmin ? "/admin/escritorios" : "/escritorio");
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +240,14 @@ export async function setMemberRole(_prev: ActionResult, fd: FormData): Promise<
     const role = z.enum(["member", "moderator", "owner"]).parse(fd.get("role"));
     const { supabase, user } = await assertOfficeManager(officeId);
     if (userId === user.id) throw new HttpError(400, "Você não pode alterar o seu próprio papel aqui.");
-    const { error } = await supabase.from("office_members").update({ role }).eq("office_id", officeId).eq("user_id", userId);
+    const isAdmin = (await getProfile(supabase, user.id))?.role === "admin";
+    const mine = await roleIn(officeId, user.id);
+    const target = await roleIn(officeId, userId);
+    // Só dono(a) (ou admin) dá posse ou mexe em outro dono(a).
+    if ((role === "owner" || target === "owner") && !isAdmin && mine !== "owner") {
+      throw new HttpError(403, "Só o dono(a) da sede pode fazer isso.");
+    }
+    const { error } = await supabaseAdmin().from("office_members").update({ role }).eq("office_id", officeId).eq("user_id", userId);
     if (error) throw error;
     revalidatePath(`/admin/escritorios/${officeId}`);
     return { ok: true, message: "Permissão atualizada." };
@@ -229,6 +263,9 @@ export async function setMemberBan(_prev: ActionResult, fd: FormData): Promise<A
     const banned = fd.get("banned") === "true";
     const { supabase, user } = await assertOfficeManager(officeId);
     if (userId === user.id) throw new HttpError(400, "Você não pode remover a si mesmo.");
+    if ((await roleIn(officeId, userId)) === "owner" && (await roleIn(officeId, user.id)) !== "owner") {
+      if ((await getProfile(supabase, user.id))?.role !== "admin") throw new HttpError(403, "Só o dono(a) pode remover outro dono(a).");
+    }
     const { error } = await supabase.from("office_members").update({ banned }).eq("office_id", officeId).eq("user_id", userId);
     if (error) throw error;
     if (banned) {

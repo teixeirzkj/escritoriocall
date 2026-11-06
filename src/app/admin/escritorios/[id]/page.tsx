@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, Lock } from "lucide-react";
+import { ArrowLeft, ExternalLink, Link2, Lock, PartyPopper } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -13,7 +13,9 @@ import {
   setMemberRole,
   updateOffice,
 } from "@/app/admin/actions";
+import { regenerateInvite } from "@/app/escritorio/actions";
 import { ActionButton, ActionForm } from "@/components/admin/ActionForm";
+import { InviteLink } from "@/components/admin/InviteLink";
 import { Labeled, OfficeFields } from "@/components/admin/OfficeFields";
 import { isOfficeManager, requireUser } from "@/lib/auth";
 import { integrationStatus } from "@/lib/env";
@@ -27,8 +29,15 @@ export const dynamic = "force-dynamic";
 
 const ROLE_LABEL = { member: "Membro", moderator: "Moderador(a)", owner: "Dono(a)" } as const;
 
-export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ nova?: string }>;
+}) {
   const { id } = await params;
+  const { nova } = await searchParams;
   const { user, profile, supabase } = await requireUser(`/admin/escritorios/${id}`);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   if (!(await isOfficeManager(supabase, id))) redirect("/escritorio?erro=sem-permissao");
@@ -55,6 +64,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const usedZones = new Set(rooms.map((r) => r.zone_key));
   const freeZones = MEETING_ZONES.filter((z) => !usedZones.has(z.key));
   const activeMembers = members.filter((m) => !m.banned);
+  const myRole = members.find((m) => m.user_id === user.id)?.role ?? null;
+  const isOwner = myRole === "owner";
+  const inviteCode = (office as unknown as { invite_code?: string }).invite_code ?? "";
 
   // Presença em tempo real (Ably REST)
   let online: { id: string; data: PresenceData }[] | null = null;
@@ -79,13 +91,51 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <ArrowLeft size={14} /> Escritórios
             </Link>
           )}
+          {!isAdmin && (
+            <Link href="/escritorio" className="mb-2 inline-flex items-center gap-1 text-sm text-[var(--muted)] hover:text-white">
+              <ArrowLeft size={14} /> Minhas sedes
+            </Link>
+          )}
           <h1 className="font-pixel text-3xl text-white">{office.name}</h1>
           <p className="mt-1 text-sm text-[var(--muted)]">/{office.slug}</p>
         </div>
         <Link href={`/escritorio/${office.slug}`} className="btn-ghost h-10 px-4 text-sm">
-          Abrir escritório <ExternalLink size={14} />
+          Entrar na sede <ExternalLink size={14} />
         </Link>
       </div>
+
+      {nova && (
+        <div className="flex items-start gap-3 rounded-2xl border border-[var(--amber)]/40 bg-[var(--amber)]/10 p-4">
+          <PartyPopper size={22} className="mt-0.5 shrink-0 text-[var(--amber)]" />
+          <div className="text-sm">
+            <p className="font-semibold text-white">Sua sede está pronta!</p>
+            <p className="mt-0.5 text-[var(--muted)]">
+              Copie o link de convite abaixo e mande para quem você quer na sede. Aqui você também renomeia as salas e
+              ajusta tudo do seu jeito.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Convite */}
+      <section className="card p-5">
+        <h2 className="mb-1 flex items-center gap-2 font-semibold text-white">
+          <Link2 size={17} className="text-[var(--amber)]" /> Link de convite
+        </h2>
+        <p className="mb-4 text-sm text-[var(--muted)]">
+          A sede é privada: não aparece para mais ninguém. Quem abrir este link cria a conta (ou entra) e clica em
+          “Aceitar convite”.
+        </p>
+        <InviteLink code={inviteCode} officeName={office.name} />
+        <div className="mt-3">
+          <ActionButton
+            action={regenerateInvite}
+            fields={{ officeId: id }}
+            label="Gerar link novo"
+            confirm="Gerar um link novo? O link atual para de funcionar (quem já entrou continua na sede)."
+          />
+        </div>
+      </section>
 
       {/* Online agora */}
       <section className="card p-5">
@@ -120,7 +170,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <h2 className="mb-4 font-semibold text-white">Configurações do ambiente</h2>
         <ActionForm action={updateOffice} submitLabel="Salvar alterações" className="space-y-4">
           <input type="hidden" name="officeId" value={id} />
-          <OfficeFields office={office} />
+          <OfficeFields office={office} isAdmin={isAdmin} />
         </ActionForm>
       </section>
 
@@ -254,6 +304,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             <tbody className="divide-y divide-white/5">
               {members.map((m) => {
                 const self = m.user_id === user.id;
+                const locked = self || (m.role === "owner" && !isAdmin && !isOwner);
                 return (
                   <tr key={m.user_id} className={m.banned ? "opacity-60" : ""}>
                     <td className="py-2.5 pr-3 text-white">
@@ -262,11 +313,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                       {m.banned && <span className="ml-2 rounded bg-[var(--coral)]/15 px-1.5 text-[11px] text-[#ffb4ad]">bloqueado</span>}
                     </td>
                     <td className="py-2.5 pr-3">
-                      {self ? (
+                      {locked ? (
                         <span className="text-[var(--muted)]">{ROLE_LABEL[m.role]}</span>
                       ) : (
                         <div className="flex flex-wrap gap-1">
-                          {(["member", "moderator", ...(isAdmin ? (["owner"] as const) : [])] as const).map((role) => (
+                          {(["member", "moderator", ...(isAdmin || isOwner ? (["owner"] as const) : [])] as const).map((role) => (
                             <ActionButton
                               key={role}
                               action={setMemberRole}
@@ -279,7 +330,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                       )}
                     </td>
                     <td className="py-2.5 text-right">
-                      {!self &&
+                      {!locked &&
                         (m.banned ? (
                           <ActionButton action={setMemberBan} fields={{ officeId: id, userId: m.user_id, banned: "false" }} label="Restaurar acesso" />
                         ) : (
@@ -300,16 +351,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         </div>
       </section>
 
-      {isAdmin && (
+      {(isAdmin || isOwner) && (
         <section className="card border-[var(--coral)]/30 p-5">
           <h2 className="mb-1 font-semibold text-white">Zona de perigo</h2>
-          <p className="mb-4 text-sm text-[var(--muted)]">Excluir apaga salas, membros e todo o histórico de mensagens deste escritório.</p>
+          <p className="mb-4 text-sm text-[var(--muted)]">Excluir apaga salas, membros, agenda e todo o histórico de mensagens desta sede.</p>
           <ActionButton
             action={deleteOffice}
             fields={{ officeId: id }}
-            label="Excluir escritório"
+            label="Excluir sede"
             className="btn-danger h-10 px-4 text-sm"
-            confirm={`Excluir definitivamente o escritório "${office.name}"?`}
+            confirm={`Excluir definitivamente a sede "${office.name}"? Não dá para desfazer.`}
           />
         </section>
       )}

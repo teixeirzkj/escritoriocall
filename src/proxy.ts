@@ -45,8 +45,12 @@ export async function proxy(request: NextRequest) {
 
   if (isLogged && AUTH_PAGES.includes(path)) {
     const to = request.nextUrl.clone();
-    to.pathname = "/escritorio";
-    to.search = "";
+    // Já logado: segue para onde ia (ex.: um link de convite) ou para as sedes.
+    const next = request.nextUrl.searchParams.get("next");
+    const safe = next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/escritorio";
+    const [p, q] = safe.split("?");
+    to.pathname = p;
+    to.search = q ? `?${q}` : "";
     return NextResponse.redirect(to);
   }
 

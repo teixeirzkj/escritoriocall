@@ -18,14 +18,14 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   if (!officeRow) notFound();
   const office = officeRow as Office;
 
-  // Membro? Se o escritório for aberto, entra automaticamente (RLS valida).
+  // Sede privada: só membros entram (o administrador da plataforma entra em qualquer uma).
   let { data: member } = await supabase
     .from("office_members")
     .select("role, banned")
     .eq("office_id", office.id)
     .eq("user_id", user.id)
     .maybeSingle();
-  if (!member && (office.is_public || profile.role === "admin")) {
+  if (!member && profile.role === "admin") {
     const { data } = await supabase
       .from("office_members")
       .insert({ office_id: office.id, user_id: user.id, role: "member" })
@@ -94,6 +94,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         proximityRadius: office.proximity_radius,
         proximityMode: office.proximity_mode,
         maxOnline: office.max_online,
+        inviteCode: manager ? ((office as unknown as { invite_code?: string }).invite_code ?? null) : null,
       }}
       rooms={roomInfos}
       desks={desks}

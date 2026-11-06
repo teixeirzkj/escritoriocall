@@ -1,4 +1,4 @@
-import { ArrowRight, Globe2, Lock } from "lucide-react";
+import { ArrowRight, Lock } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createOffice } from "@/app/admin/actions";
@@ -33,7 +33,7 @@ export default async function Page() {
               <div className="flex items-center gap-2 font-medium text-white">
                 {o.name}
                 <span className="flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[11px] font-normal text-[var(--muted)]">
-                  {o.is_public ? <Globe2 size={11} /> : <Lock size={11} />} {o.is_public ? "aberto" : "privado"}
+                  <Lock size={11} /> privado
                 </span>
               </div>
               <div className="text-xs text-[var(--muted)]">/{o.slug} · {count(rooms, o.id)} salas · {count(members, o.id)} membros · raio {o.proximity_radius}px</div>
