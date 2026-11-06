@@ -6,7 +6,7 @@ import type { GameMsg } from "@/lib/realtime/channels";
 import type { RosterEntry } from "@/lib/realtime/useOfficeRealtime";
 import { ArcadeGame } from "./ArcadeGame";
 import { PaddleGame, type PaddleNet, type PaddleRole } from "./PaddleGame";
-import { PoolGame } from "./PoolGame";
+import { Pool8Game, type PoolNet } from "./Pool8Game";
 
 export interface GameTable {
   /** Identifica a mesa (ex.: "pingPong-12"). */
@@ -35,7 +35,8 @@ export function GameDialog({
   send: (msg: GameMsg) => void;
   onClose: () => void;
 }) {
-  const twoPlayer = table.type === "pingPong" || table.type === "foosball";
+  const twoPlayer = table.type === "pingPong" || table.type === "foosball" || table.type === "poolTable";
+  const isPool = table.type === "poolTable";
   // Quem já está nesta mesa quando eu chego (vira meu adversário).
   const [host] = useState(() => (twoPlayer ? roster.find((r) => r.data.game === table.key) ?? null : null));
   const [phase, setPhase] = useState<Phase>(host ? "matching" : twoPlayer ? "waiting" : "playing");
@@ -45,7 +46,7 @@ export function GameDialog({
   const opponentRef = useRef<string | null>(null);
   const phaseRef = useRef(phase);
   const roleRef = useRef(role);
-  const listeners = useRef(new Set<{ onState?: (s: number[]) => void; onPaddle?: (y: number) => void }>());
+  const listeners = useRef(new Set<{ onState?: (s: number[]) => void; onPaddle?: (y: number) => void; onPool?: (d: unknown) => void }>());
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -77,6 +78,8 @@ export function GameDialog({
         if (fromId === opponentRef.current) for (const l of listeners.current) l.onState?.(msg.s);
       } else if (msg.k === "paddle") {
         if (fromId === opponentRef.current) for (const l of listeners.current) l.onPaddle?.(msg.y);
+      } else if (msg.k === "pool") {
+        if (fromId === opponentRef.current) for (const l of listeners.current) l.onPool?.(msg.d);
       } else if (msg.k === "leave") {
         if (fromId !== opponentRef.current) return;
         opponentRef.current = null;
@@ -126,6 +129,22 @@ export function GameDialog({
     [send, table.key],
   );
 
+  const poolNet = useMemo<PoolNet>(
+    () => ({
+      send: (d) => {
+        if (opponentRef.current) send({ k: "pool", table: table.key, to: opponentRef.current, d });
+      },
+      listen: (h) => {
+        const l = { onPool: h };
+        listeners.current.add(l);
+        return () => {
+          listeners.current.delete(l);
+        };
+      },
+    }),
+    [send, table.key],
+  );
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -134,7 +153,7 @@ export function GameDialog({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-3">
-      <div role="dialog" aria-label={table.label} className="panel-in w-full max-w-2xl rounded-2xl border border-white/10 bg-[var(--panel)] shadow-2xl">
+      <div role="dialog" aria-label={table.label} className={`panel-in w-full ${isPool ? "max-w-3xl" : "max-w-2xl"} max-h-[calc(100dvh-24px)] overflow-y-auto rounded-2xl border border-white/10 bg-[var(--panel)] shadow-2xl`}>
         <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
             <h2 className="font-semibold text-white">{table.label}</h2>
@@ -143,7 +162,11 @@ export function GameDialog({
                 ? opponent
                   ? `Partida contra ${opponent.name}`
                   : phase === "playing"
-                    ? "Contra o computador — se alguém sentar na mesa, vira partida de verdade"
+                    ? isPool
+                      ? "Treino sozinho — se alguém chegar na mesa, vira partida de verdade"
+                      : "Contra o computador — se alguém sentar na mesa, vira partida de verdade"
+                    : isPool
+                    ? "8 ball para 2 pessoas: lisas contra listradas"
                     : "Mesa para 2 pessoas"
                 : "Jogo individual com recorde"}
             </p>
@@ -182,7 +205,7 @@ export function GameDialog({
                   }}
                   className="btn-primary h-10 px-4 text-sm"
                 >
-                  <Bot size={16} /> Jogar contra o computador
+                  <Bot size={16} /> {isPool ? "Treinar sozinho" : "Jogar contra o computador"}
                 </button>
               </div>
             </div>
@@ -197,7 +220,15 @@ export function GameDialog({
               net={role === "cpu" ? null : net}
             />
           )}
-          {phase === "playing" && table.type === "poolTable" && <PoolGame />}
+          {phase === "playing" && isPool && (
+            <Pool8Game
+              key={`${role}-${opponent?.id ?? "solo"}`}
+              role={role === "cpu" ? "solo" : role}
+              myName={me.name}
+              opponentName={opponent?.name ?? ""}
+              net={role === "cpu" ? null : poolNet}
+            />
+          )}
           {phase === "playing" && table.type === "arcade" && <ArcadeGame />}
         </div>
       </div>

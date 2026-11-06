@@ -69,7 +69,9 @@ export type GameMsg =
   | { k: "start"; table: string; to: string }
   | { k: "state"; table: string; to: string; s: number[] }
   | { k: "paddle"; table: string; to: string; y: number }
-  | { k: "leave"; table: string; to: string };
+  | { k: "leave"; table: string; to: string }
+  /** Sinuca 8 ball: mira, tacada e estado da mesa (validado no componente). */
+  | { k: "pool"; table: string; to: string; d: unknown };
 
 /** Reação rápida (emoji) publicada no canal do escritório. */
 export interface ReactionMsg {

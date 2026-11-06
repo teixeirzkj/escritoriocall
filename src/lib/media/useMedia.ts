@@ -457,14 +457,18 @@ export function useMedia(opts: Options) {
     }
     const next = !room.localParticipant.isScreenShareEnabled;
     try {
-      // Tela em alta qualidade: 1080p, priorizando nitidez (texto) em vez de fluidez.
+      // Tela em 1080p até 30 quadros/s. Com internet ou processador apertados, o navegador
+      // reduz um pouco a resolução em vez de congelar a imagem ("balanced").
+      // H.264 usa o codificador de vídeo da placa (pouco processador); a camada de 720p/15
+      // serve quem está com a tela pequena ou com a conexão fraca.
       await room.localParticipant.setScreenShareEnabled(
         next,
-        { audio: false, resolution: ScreenSharePresets.h1080fps15.resolution, contentHint: "detail" },
+        { audio: false, resolution: ScreenSharePresets.h1080fps30.resolution },
         {
-          screenShareEncoding: { maxBitrate: 3_500_000, maxFramerate: 15, priority: "high" },
-          screenShareSimulcastLayers: [ScreenSharePresets.h720fps5],
-          degradationPreference: "maintain-resolution",
+          videoCodec: "h264",
+          screenShareEncoding: { maxBitrate: 4_500_000, maxFramerate: 30, priority: "high" },
+          screenShareSimulcastLayers: [ScreenSharePresets.h720fps15],
+          degradationPreference: "balanced",
         },
       );
       setScreen(next);

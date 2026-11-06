@@ -15,14 +15,14 @@ Escritório 2D em pixel art onde a equipe anda, se esbarra e conversa por **voz 
 - WASD/setas, colisão com paredes e móveis, zoom, e `Ctrl + arrastar` para mover o mapa.
 - **Celular:** joystick, pinça para zoom, dois dedos para mover o mapa, barra compacta com menu "Mais" e instalação na tela inicial (PWA).
 - Clique em objetos: sentar em sofás, banquetas e pufes; abrir a geladeira, pegar café ou lanche.
-- Jogos de verdade nas mesas: pingue-pongue e totó para 2 pessoas em tempo real (ou contra o computador), sinuca e fliperama com recorde.
+- Jogos de verdade nas mesas: pingue-pongue e totó para 2 pessoas em tempo real (ou contra o computador), **sinuca 8 ball** para 2 pessoas (lisas × listradas, faltas, bola na mão e linhas de mira da branca e da bola atingida) e fliperama com recorde.
 - Piscina: dá para nadar e pular da borda (barra de espaço).
 - Mesa fixa: cada pessoa escolhe a sua e passa a começar o dia sentada nela.
 
 **Áudio e vídeo**
 - Proximidade com raio configurável (modos *fade* e *cutoff*); paredes das salas isolam o som.
 - Reuniões em salas LiveKit separadas, com capacidade e acesso validados no servidor.
-- Tela de reunião no estilo Meet: grade de câmeras em 720p, tela compartilhada em 1080p em destaque, modo ampliado, fixar participante, trocar de sala, minimizar para ver o mapa e **janela flutuante** (Picture-in-Picture) visível em outras abas.
+- Tela de reunião no estilo Meet: grade de câmeras em 720p, tela compartilhada em 1080p até 30 quadros/s (H.264) em destaque, modo ampliado, fixar participante, trocar de sala, minimizar para ver o mapa e **janela flutuante** (Picture-in-Picture) visível em outras abas.
 - **Quadro branco** na reunião: todos da sala desenham juntos, com cores, borracha, desfazer, limpar e baixar a imagem. Quem chega recebe o que já foi desenhado.
 - Sala trancada: quem chega **bate na porta** e alguém de dentro abre.
 - Fundo da câmera: desfoque, imagens prontas ou imagem própria.

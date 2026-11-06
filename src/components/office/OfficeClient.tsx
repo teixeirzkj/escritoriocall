@@ -1122,6 +1122,18 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
 
   const exitOffice = useCallback(() => router.push("/escritorio"), [router]);
 
+  // Reunião em tela cheia cobre o mapa: ele passa a redesenhar só 4x/s, liberando processador
+  // para o vídeo e a transmissão de tela.
+  const meetingFull = Boolean(meetingId) && !meetingMinimized;
+  useEffect(() => {
+    if (!meetingFull || !gameReady) return;
+    const t = window.setTimeout(() => gameRef.current?.setLowPower(true), 800);
+    return () => {
+      window.clearTimeout(t);
+      gameRef.current?.setLowPower(false);
+    };
+  }, [meetingFull, gameReady]);
+
   const connectedCount = rt.roster.length + 1;
   const inMeeting = Boolean(meetingId);
 
