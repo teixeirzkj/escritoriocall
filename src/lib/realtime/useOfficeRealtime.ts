@@ -96,6 +96,8 @@ export function useOfficeRealtime(opts: Options) {
   const roomChannelRef = useRef<Ably.RealtimeChannel | null>(null);
   const roomIdRef = useRef<string | null>(null);
   const presenceRef = useRef<PresenceData>(opts.initialPresence);
+  /** Já entrou na presença (antes disso, o enter leva o estado atual). */
+  const enteredRef = useRef(false);
   const rosterRef = useRef(new Map<string, RosterEntry>());
   const latestMoveRef = useRef<MoveMsg | null>(null);
   const sentMoveRef = useRef<MoveMsg | null>(null);
@@ -184,7 +186,11 @@ export function useOfficeRealtime(opts: Options) {
       switch (change.current) {
         case "connected":
           setState("connected");
-          if (wasConnected) void resync();
+          if (wasConnected) {
+            void resync();
+            // Garante que os outros vejam o estado atual (mudanças feitas durante a queda).
+            if (enteredRef.current) channelRef.current?.presence.update(presenceRef.current).catch(() => {});
+          }
           wasConnected = true;
           break;
         case "connecting":
@@ -262,6 +268,7 @@ export function useOfficeRealtime(opts: Options) {
           return;
         }
         await channel.presence.enter(presenceRef.current);
+        enteredRef.current = true;
         if (before.some((m) => m.clientId === myId && m.connectionId !== client.connection.id)) {
           await channel.publish("takeover", { tab });
         }
@@ -343,6 +350,7 @@ export function useOfficeRealtime(opts: Options) {
 
     return () => {
       disposed = true;
+      enteredRef.current = false;
       window.clearInterval(moveTimer);
       window.clearInterval(presenceTimer);
       try {
@@ -377,8 +385,10 @@ export function useOfficeRealtime(opts: Options) {
   const updatePresence = useCallback((patch: Partial<PresenceData>) => {
     presenceRef.current = { ...presenceRef.current, ...patch };
     const channel = channelRef.current;
-    const client = clientRef.current;
-    if (channel && client?.connection.state === "connected") {
+    const st = clientRef.current?.connection.state;
+    // Conectando/caiu por um instante: o Ably guarda na fila e envia ao voltar (não perde o aviso).
+    // Antes de entrar na presença, o enter já leva o estado atual.
+    if (channel && enteredRef.current && (st === "connected" || st === "connecting" || st === "disconnected")) {
       channel.presence.update(presenceRef.current).catch(() => {});
     }
   }, []);

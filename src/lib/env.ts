@@ -80,12 +80,16 @@ export function isCloudflareRealtimeConfigured(): boolean {
 export type MediaProvider = "cloudflare" | "livekit";
 
 /**
- * Qual serviço de áudio/vídeo usar: Cloudflare quando configurado (a menos que
- * MEDIA_PROVIDER=livekit force a volta), senão LiveKit.
+ * Qual serviço de áudio/vídeo usar: Cloudflare quando configurado, senão LiveKit.
+ * - MEDIA_PROVIDER=livekit força a volta para o LiveKit (todas as sedes);
+ * - CF_ROLLOUT=test liga o Cloudflare só nas sedes de teste (endereço começando
+ *   com "e2e-"), para testar ao vivo sem mexer em quem já usa.
  */
-export function mediaProvider(): MediaProvider {
+export function mediaProvider(officeSlug?: string): MediaProvider {
   if (process.env.MEDIA_PROVIDER === "livekit") return "livekit";
-  return isCloudflareRealtimeConfigured() ? "cloudflare" : "livekit";
+  if (!isCloudflareRealtimeConfigured()) return "livekit";
+  if (process.env.CF_ROLLOUT === "test") return officeSlug?.startsWith("e2e-") ? "cloudflare" : "livekit";
+  return "cloudflare";
 }
 
 /** Segredo do servidor para assinar passes (sala trancada, sessões de mídia). */

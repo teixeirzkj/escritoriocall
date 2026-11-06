@@ -106,7 +106,14 @@ export class CfSession {
     readonly tk: string,
     iceServers: RTCIceServer[],
   ) {
-    this.pc = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle" });
+    // Teste: localStorage "fredy:rtc-relay" = "1" força o TURN (simula rede que bloqueia UDP).
+    let relay = false;
+    try {
+      relay = window.localStorage.getItem("fredy:rtc-relay") === "1";
+    } catch {
+      /* sem armazenamento */
+    }
+    this.pc = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle", iceTransportPolicy: relay ? "relay" : "all" });
     this.pc.ontrack = (ev) => {
       const mid = ev.transceiver.mid;
       const key = mid ? this.byMid.get(mid) : undefined;
@@ -210,6 +217,9 @@ export class CfSession {
   /** Publica uma faixa local. Devolve o nome da faixa (para quem for receber). */
   push(kind: LocalKind, track: MediaStreamTrack, opts: PushOptions = {}): Promise<string> {
     return this.run(async () => {
+      // Já publicada (duas chamadas ao mesmo tempo): não publica duas vezes.
+      const existing = this.local.get(kind);
+      if (existing) return existing.name;
       const name = `${kind}-${++this.counter}`;
       const tr = this.pc.addTransceiver(track, { direction: "sendonly", sendEncodings: opts.encodings });
       if (opts.codec) preferCodec(tr, opts.codec);

@@ -415,6 +415,30 @@ export function useCfMedia(opts: Options) {
     return cams > 4 ? "b" : "a";
   }, [myId]);
 
+  /** Publica/para de publicar microfone, câmera e tela conforme o estado atual. */
+  const syncLocal = useCallback(
+    async (s: CfSession) => {
+      const camOn = desiredRef.current.cam && camTrackRef.current;
+      const micTrack = micTrackRef.current;
+      const camTrack = camOn ? camTrackRef.current!.mediaStreamTrack : null;
+      const scrTrack = screenTrackRef.current;
+      if (micTrack && !s.has("mic")) await s.push("mic", micTrack);
+      if (!micTrack && s.has("mic")) await s.unpush("mic");
+      if (camTrack && !s.has("cam")) await s.push("cam", camTrack, { encodings: CAM_ENCODINGS });
+      if (!camTrack && s.has("cam")) await s.unpush("cam");
+      if (scrTrack && !s.has("screen")) {
+        await s.push("screen", scrTrack, {
+          encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
+          codec: "video/H264",
+          degradation: "balanced",
+        });
+      }
+      if (!scrTrack && s.has("screen")) await s.unpush("screen");
+      publishRtcInfo();
+    },
+    [publishRtcInfo],
+  );
+
   const reconcileOnce = useCallback(async () => {
     if (Date.now() < pauseRef.current) return;
     const wanted = wantedRefs();
@@ -433,22 +457,7 @@ export function useCfMedia(opts: Options) {
       if (!s) return;
     }
     // Publicar
-    const micTrack = micTrackRef.current;
-    const camTrack = camOn ? camTrackRef.current!.mediaStreamTrack : null;
-    const scrTrack = screenTrackRef.current;
-    if (micTrack && !s.has("mic")) await s.push("mic", micTrack);
-    if (!micTrack && s.has("mic")) await s.unpush("mic");
-    if (camTrack && !s.has("cam")) await s.push("cam", camTrack, { encodings: CAM_ENCODINGS });
-    if (!camTrack && s.has("cam")) await s.unpush("cam");
-    if (scrTrack && !s.has("screen")) {
-      await s.push("screen", scrTrack, {
-        encodings: [{ maxBitrate: 3_000_000, maxFramerate: 30 }],
-        codec: "video/H264",
-        degradation: "balanced",
-      });
-    }
-    if (!scrTrack && s.has("screen")) await s.unpush("screen");
-    publishRtcInfo();
+    await syncLocal(s);
     // Receber
     const wantedKeys = new Set(wanted.map(remoteKey));
     const stale = s.pulledKeys.filter((k) => !wantedKeys.has(k));
@@ -472,7 +481,7 @@ export function useCfMedia(opts: Options) {
       await s.setQuality(camKeys.map((key) => ({ key, rid })));
     }
     rebuild();
-  }, [wantedRefs, closeSession, ensureSession, publishRtcInfo, detachRemote, camRid, rebuild]);
+  }, [wantedRefs, closeSession, ensureSession, syncLocal, detachRemote, camRid, rebuild]);
 
   const reconcile = useCallback(async () => {
     const loop = loopRef.current;
@@ -851,10 +860,16 @@ export function useCfMedia(opts: Options) {
         return false;
       }
       applyVolumes();
+      // Já publica antes de voltar: o aviso "entrei na sala" sai junto com a sessão nova.
+      try {
+        await syncLocal(s);
+      } catch {
+        /* o laço tenta de novo */
+      }
       void reconcile();
       return true;
     },
-    [closeSession, ensureSession, applyVolumes, reconcile],
+    [closeSession, ensureSession, applyVolumes, syncLocal, reconcile],
   );
 
   const leaveMeeting = useCallback(async () => {

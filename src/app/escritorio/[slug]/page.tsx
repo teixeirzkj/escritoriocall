@@ -57,7 +57,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     logoUrl: r.logo_url || null,
   }));
   const layout = layoutSpecFor(office.layout, (rooms ?? []) as Room[]);
-  const provider = mediaProvider();
+  const provider = mediaProvider(office.slug);
 
   // Mesas fixas (nome de quem é dono de cada mesa). Lido com a chave do servidor:
   // a pessoa já foi validada como membro acima.
