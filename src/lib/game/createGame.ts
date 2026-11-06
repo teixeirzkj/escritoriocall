@@ -22,7 +22,7 @@ export function createGame(parent: HTMLElement, bridge: GameBridge): GameHandle 
       width: parent.clientWidth || 800,
       height: parent.clientHeight || 600,
     },
-    input: { keyboard: { target: window }, mouse: { preventDefaultWheel: false } },
+    input: { keyboard: { target: window }, mouse: { preventDefaultWheel: false }, activePointers: 3 },
     audio: { noAudio: true },
     banner: false,
     fps: { target: 60 },

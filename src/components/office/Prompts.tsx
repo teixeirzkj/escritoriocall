@@ -1,7 +1,51 @@
 "use client";
 
-import { BellRing, Check, DoorClosed, Navigation, Pin, X } from "lucide-react";
+import { BellRing, CalendarClock, Check, DoorClosed, Navigation, Pin, X } from "lucide-react";
 import type { KnockMsg, RingMsg } from "@/lib/realtime/channels";
+
+/** Lembrete da agenda: "Sua reunião começa às 14:00 na Sala 01". */
+export function BookingReminder({
+  title,
+  detail,
+  onJoin,
+  onDismiss,
+}: {
+  title: string;
+  detail: string;
+  onJoin: (() => void) | null;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-20 z-[60] flex justify-center px-3">
+      <div
+        role="alertdialog"
+        aria-label={`Lembrete: ${title}`}
+        className="panel-in pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-2xl border-2 border-[var(--amber)] bg-[var(--panel)] p-3 shadow-[0_0_0_6px_rgba(43,106,243,0.18)]"
+      >
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--amber)] text-white">
+          <CalendarClock size={20} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="line-clamp-2 text-sm font-semibold text-white">{title}</div>
+          <div className="truncate text-xs text-[var(--muted)]">{detail}</div>
+        </div>
+        {onJoin && (
+          <button type="button" onClick={onJoin} className="btn-primary h-9 shrink-0 px-3 text-sm">
+            Entrar
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--muted)] hover:bg-white/10 hover:text-white"
+          aria-label="Dispensar o lembrete"
+        >
+          <X size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /** "Fulano está te chamando" — com atalho para ir até a pessoa. */
 export function RingPrompt({ ring, onGo, onDismiss }: { ring: RingMsg; onGo: () => void; onDismiss: () => void }) {

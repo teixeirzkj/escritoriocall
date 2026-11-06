@@ -74,6 +74,8 @@ export class GameBridge {
   /** Pulos de outras pessoas a animar. */
   jumps: string[] = [];
   onLocalJump: (() => void) | null = null;
+  /** Zoom mudou por gesto de pinça (celular). */
+  onPinchZoom: ((z: number) => void) | null = null;
   /** Reações a mostrar (a cena consome a fila). */
   reactions: { id: string; emoji: string }[] = [];
   /** Nome do dono de cada mesa (índice da mesa → nome, ou ""). */
@@ -189,8 +191,10 @@ export class GameBridge {
     onDeskClick?: DeskHandler | null;
     onItemClick?: ((i: Interaction) => void) | null;
     onLocalJump?: (() => void) | null;
+    onPinchZoom?: ((z: number) => void) | null;
   }) {
     if (h.onLocalJump !== undefined) this.onLocalJump = h.onLocalJump;
+    if (h.onPinchZoom !== undefined) this.onPinchZoom = h.onPinchZoom;
     if (h.onItemClick !== undefined) this.onItemClick = h.onItemClick;
     if (h.onDeskClick !== undefined) this.onDeskClick = h.onDeskClick;
     if (h.onSeatClick !== undefined) this.onSeatClick = h.onSeatClick;

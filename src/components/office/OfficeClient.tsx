@@ -22,7 +22,10 @@ import { ChatPanel } from "./ChatPanel";
 import { ControlBar } from "./ControlBar";
 import { ParticipantsPanel, type ParticipantRow } from "./ParticipantsPanel";
 import { PipMeeting } from "./PipMeeting";
-import { DeskPrompt, KnockRequests, RingPrompt } from "./Prompts";
+import { BookingReminder, DeskPrompt, KnockRequests, RingPrompt } from "./Prompts";
+import { AgendaDialog, type NewBooking } from "./AgendaDialog";
+import { type Booking, dueReminders, fmtTime, isMine, roomSchedule, sameDay } from "@/lib/bookings";
+import { applyBoard, type BoardMsg, type BoardState, chunkStrokes, EMPTY_BOARD, isSyncResponder, type Stroke } from "@/lib/board";
 import { ItemDialog, type Treat } from "./ItemDialog";
 import { type GameBus, GameDialog, type GameTable } from "./games/GameDialog";
 import { INTERACTIONS } from "@/lib/game/map";
@@ -124,13 +127,44 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
   const roomsById = useMemo(() => new Map(rooms.map((r) => [r.id, r])), [rooms]);
 
   // ---------------------------------------------------------------------------
+  // Agenda das salas
+  // ---------------------------------------------------------------------------
+  const [agendaOpen, setAgendaOpen] = useState(false);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+  /** Relógio da agenda (atualiza a cada 20 s). */
+  const [clock, setClock] = useState(() => Date.now());
+  const [reminder, setReminder] = useState<Booking | null>(null);
+  const remindedRef = useRef<Set<string>>(new Set());
+  const loadBookings = useCallback(() => {
+    void fetch(`/api/bookings?officeId=${office.id}`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ bookings: Booking[]; members: { id: string; name: string }[] }>) : null))
+      .then((j) => {
+        if (!j) return;
+        setBookings(j.bookings);
+        setMembers(j.members);
+      })
+      .catch(() => {});
+  }, [office.id]);
+  useEffect(() => {
+    loadBookings();
+    const tick = window.setInterval(() => setClock(Date.now()), 20_000);
+    const refresh = window.setInterval(loadBookings, 5 * 60_000);
+    return () => {
+      window.clearInterval(tick);
+      window.clearInterval(refresh);
+    };
+  }, [loadBookings]);
+
+  // ---------------------------------------------------------------------------
   // Tempo real (Ably)
   // ---------------------------------------------------------------------------
   const onControl = useCallback(
     (msg: ControlMsg) => {
       if (msg?.type === "rooms-updated" || msg?.type === "office-updated") router.refresh();
+      if (msg?.type === "bookings-updated") loadBookings();
     },
-    [router],
+    [router, loadBookings],
   );
 
 
@@ -240,8 +274,9 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
     onGame: (from, msg) => {
       for (const h of gameBus) h(from, msg);
     },
+    onBoard: (from, msg) => onBoardRef.current?.(from, msg),
   });
-  const { reportMove, updatePresence, setRoomChannel, sendReaction, sendPunch, sendJump, sendGame } = rt;
+  const { reportMove, updatePresence, setRoomChannel, sendReaction, sendPunch, sendJump, sendGame, sendBoard } = rt;
 
   // Pulo (barra de espaço) aparece para todos.
   useEffect(() => {
@@ -291,13 +326,15 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
     if (!host) return;
     bridge.setProximityRadius(office.proximityRadius);
     bridge.setShowNames(initialSettings.show_names);
-    const initialZoom = window.innerWidth >= 1800 ? 1.5 : 1;
+    // Celular: começa mais afastado para enxergar mais do escritório.
+    const initialZoom = window.innerWidth >= 1800 ? 1.5 : window.innerWidth < 640 ? 0.75 : 1;
     bridge.setZoom(initialZoom);
     bridge.setHandlers({
       onReady: () => {
         setGameReady(true);
         setZoom(initialZoom);
       },
+      onPinchZoom: (z) => setZoom(z),
     });
     void import("@/lib/game/createGame").then(({ createGame }) => {
       if (cancelled) return;
@@ -650,6 +687,67 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
     return () => setMusic(null);
   }, [meetingId, loadMusic]);
 
+  // ---------------------------------------------------------------------------
+  // Quadro branco da reunião (traços pelo canal do escritório, marcados com a sala)
+  // ---------------------------------------------------------------------------
+  const [board, setBoard] = useState<BoardState>(EMPTY_BOARD);
+  const boardRef = useRef(board);
+  useEffect(() => {
+    boardRef.current = board;
+  }, [board]);
+  const onBoardRef = useRef<((from: string, msg: BoardMsg) => void) | null>(null);
+  useEffect(() => {
+    onBoardRef.current = (from, msg) => {
+      const room = meetingIdRef.current;
+      if (!room || !msg || msg.room !== room) return;
+      if (msg.k === "req") {
+        // Quem chegou pede uma cópia; só uma pessoa da sala responde.
+        const st = boardRef.current;
+        const inRoom = [me.id, ...rosterRef.current.filter((r) => r.data.roomId === room).map((r) => r.id)];
+        if ((st.open || st.strokes.length) && isSyncResponder(me.id, from, inRoom)) {
+          const chunks = chunkStrokes(st.strokes);
+          if (!chunks.length) chunks.push([]);
+          for (const c of chunks) sendBoard({ k: "sync", room, to: from, open: st.open, strokes: c });
+        }
+        return;
+      }
+      if (msg.k === "open" && !boardRef.current.open) {
+        const name = rosterRef.current.find((r) => r.id === from)?.data.name ?? "Alguém";
+        toast(`${name} abriu o quadro branco`, "info");
+      }
+      setBoard((s) => applyBoard(s, from, msg, me.id));
+    };
+  }, [me.id, sendBoard, toast]);
+
+  // Ao entrar numa sala, pede o quadro a quem já está lá; ao sair, esquece.
+  useEffect(() => {
+    if (!meetingId) return;
+    sendBoard({ k: "req", room: meetingId });
+    return () => setBoard(EMPTY_BOARD);
+  }, [meetingId, sendBoard]);
+
+  const boardSend = useCallback(
+    (m: BoardMsg) => {
+      setBoard((s) => applyBoard(s, me.id, m, me.id));
+      sendBoard(m);
+    },
+    [me.id, sendBoard],
+  );
+  const boardActions = useMemo(() => {
+    const room = meetingId ?? "";
+    return {
+      open: () => boardSend({ k: "open", room }),
+      close: () => boardSend({ k: "close", room }),
+      stroke: (s: Stroke) => boardSend({ k: "stroke", room, s }),
+      clear: () => boardSend({ k: "clear", room }),
+      undo: () => {
+        const mine = boardRef.current.strokes.filter((s) => s.by === me.id);
+        const last = mine[mine.length - 1];
+        if (last) boardSend({ k: "undo", room, id: last.id });
+      },
+    };
+  }, [meetingId, boardSend, me.id]);
+
   // Aviso (som + notificação) quando alguém entra na sala em que estou.
   const roomSeenRef = useRef<{ room: string | null; ids: Set<string> }>({ room: null, ids: new Set() });
   useEffect(() => {
@@ -875,6 +973,84 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
     [roomsById, joinMeeting, meetingId, leaveMeeting, goTo],
   );
 
+  // ---------------------------------------------------------------------------
+  // Agenda: lembrete 5 min antes, reservar, cancelar
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const due = dueReminders(bookings, me.id, clock, remindedRef.current);
+    if (!due.length) return;
+    const t = window.setTimeout(() => {
+      for (const b of due) remindedRef.current.add(b.id);
+      const b = due[0];
+      if (meetingIdRef.current === b.roomId) return;
+      if (statusRef.current !== "nao-perturbe") playChime("ring");
+      setReminder(b);
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [bookings, clock, me.id]);
+  useEffect(() => {
+    if (!reminder) return;
+    const t = window.setTimeout(() => setReminder(null), 120_000);
+    return () => window.clearTimeout(t);
+  }, [reminder]);
+
+  const createBooking = useCallback(
+    async (b: NewBooking) => {
+      const r = await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ officeId: office.id, ...b }),
+      }).catch(() => null);
+      if (!r?.ok) {
+        const j = (await r?.json().catch(() => ({}))) as { error?: string } | undefined;
+        return j?.error ?? "Não foi possível reservar a sala.";
+      }
+      toast(
+        b.attendees.length ? "Sala reservada! Os convidados recebem um aviso 5 min antes." : "Sala reservada!",
+        "success",
+      );
+      loadBookings();
+      return null;
+    },
+    [office.id, toast, loadBookings],
+  );
+  const cancelBooking = useCallback(
+    async (id: string) => {
+      const r = await fetch("/api/bookings", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ officeId: office.id, id }),
+      }).catch(() => null);
+      if (!r?.ok) {
+        const j = (await r?.json().catch(() => ({}))) as { error?: string } | undefined;
+        toast(j?.error ?? "Não foi possível cancelar.", "error");
+        return;
+      }
+      toast("Reserva cancelada.", "info");
+      loadBookings();
+    },
+    [office.id, toast, loadBookings],
+  );
+
+  /** Texto curto sobre a reserva da sala (agora ou nas próximas 3 horas). */
+  const bookingNote = useCallback(
+    (roomId: string) => {
+      const { current, next } = roomSchedule(bookings, roomId, clock);
+      if (current) return `Reservada: “${current.title}” até ${fmtTime(current.endsAt)}`;
+      if (next && new Date(next.startsAt).getTime() - clock < 3 * 60 * 60_000)
+        return `Reservada às ${fmtTime(next.startsAt)}: “${next.title}”`;
+      return null;
+    },
+    [bookings, clock],
+  );
+  /** Minhas reuniões de hoje que ainda não acabaram (número no botão da agenda). */
+  const myTodayCount = useMemo(
+    () =>
+      bookings.filter((b) => isMine(b, me.id) && sameDay(b.startsAt, new Date(clock)) && new Date(b.endsAt).getTime() > clock)
+        .length,
+    [bookings, me.id, clock],
+  );
+
   /** Define/libera a mesa fixa. */
   const setDesk = useCallback(
     async (desk: number | null) => {
@@ -971,6 +1147,8 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
         nearCount={inMeeting ? 0 : nearIds.length}
         status={status}
         onStatus={changeStatus}
+        onAgenda={() => setAgendaOpen(true)}
+        agendaCount={myTodayCount}
       />
 
       {inMeeting && meetingRoom ? (
@@ -994,6 +1172,14 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
           onToggleLock={() => void setRoomLock(meetingRoom.id, !meetingRoom.lockedBy)}
           avatarFor={(id) => (id === me.id ? bridge.local.avatar : bridge.remotes.get(id)?.avatar ?? me.avatar)}
           onSwitch={(r) => void joinMeeting(r)}
+          meId={me.id}
+          board={board}
+          onBoardOpen={boardActions.open}
+          onBoardClose={boardActions.close}
+          onBoardStroke={boardActions.stroke}
+          onBoardUndo={boardActions.undo}
+          onBoardClear={boardActions.clear}
+          bookingLabel={bookingNote(meetingRoom.id)}
         />
       ) : (
         <ProximityStrip tiles={media.tiles} nearIds={nearIds} speakers={speakers} />
@@ -1006,6 +1192,7 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
           joining={joining}
           mediaUnavailable={media.status === "unconfigured"}
           onJoin={() => joinMeeting(zoneRoom)}
+          note={bookingNote(zoneRoom.id)}
         />
       )}
 
@@ -1143,6 +1330,45 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
             setItemDialog(null);
             holdItem(t);
           }}
+        />
+      )}
+      {agendaOpen && (
+        <AgendaDialog
+          rooms={rooms}
+          bookings={bookings}
+          members={members}
+          meId={me.id}
+          isManager={me.isManager}
+          officeUrl={typeof window === "undefined" ? "" : `${window.location.origin}/escritorio/${office.slug}`}
+          defaultRoomId={meetingId ?? zoneRoom?.id ?? null}
+          now={clock}
+          onCreate={createBooking}
+          onCancel={cancelBooking}
+          onJoin={(r) => {
+            setAgendaOpen(false);
+            void joinMeeting(r);
+          }}
+          onClose={() => setAgendaOpen(false)}
+        />
+      )}
+      {reminder && !ring && (
+        <BookingReminder
+          title={
+            new Date(reminder.startsAt).getTime() > clock
+              ? `“${reminder.title}” começa às ${fmtTime(reminder.startsAt)}`
+              : `“${reminder.title}” já começou`
+          }
+          detail={roomsById.get(reminder.roomId)?.name ?? "Sala de reunião"}
+          onJoin={
+            roomsById.get(reminder.roomId)
+              ? () => {
+                  const room = roomsById.get(reminder.roomId)!;
+                  setReminder(null);
+                  void joinMeeting(room);
+                }
+              : null
+          }
+          onDismiss={() => setReminder(null)}
         />
       )}
       {ring && (

@@ -9,10 +9,12 @@ interface Props {
   joining: boolean;
   mediaUnavailable: boolean;
   onJoin: () => void;
+  /** Reserva da sala (agora ou em breve). */
+  note?: string | null;
 }
 
 /** Cartão exibido ao entrar na área de uma sala de reunião. */
-export function RoomPrompt({ room, occupancy, joining, mediaUnavailable, onJoin }: Props) {
+export function RoomPrompt({ room, occupancy, joining, mediaUnavailable, onJoin, note }: Props) {
   const full = occupancy >= room.capacity;
   const blocked = !room.canAccess;
   return (
@@ -28,7 +30,8 @@ export function RoomPrompt({ room, occupancy, joining, mediaUnavailable, onJoin 
             {room.isPrivate && <span>· privada</span>}
             {full && <span className="text-[#ff9b92]">· cheia</span>}
           </div>
-          {!blocked && !full && <div className="mt-0.5 hidden text-[11px] text-[var(--muted)] sm:block">ou clique numa cadeira da sala</div>}
+          {note && <div className="mt-0.5 truncate text-[11px] text-[var(--amber)]">{note}</div>}
+          {!blocked && !full && !note && <div className="mt-0.5 hidden text-[11px] text-[var(--muted)] sm:block">ou clique numa cadeira da sala</div>}
         </div>
         {blocked ? (
           <span className="rounded-lg bg-white/5 px-3 py-2 text-xs text-[var(--muted)]">Acesso restrito</span>
@@ -38,9 +41,13 @@ export function RoomPrompt({ room, occupancy, joining, mediaUnavailable, onJoin 
             onClick={onJoin}
             disabled={joining || full || mediaUnavailable}
             title={mediaUnavailable ? "Áudio/vídeo não configurado no servidor" : undefined}
-            className="btn-primary h-10 shrink-0 px-4 text-sm"
+            className="btn-primary h-10 shrink-0 px-3 text-sm sm:px-4"
           >
-            {joining ? "Entrando…" : "Entrar na reunião"}
+            {joining ? "Entrando…" : (
+              <>
+                Entrar<span className="hidden sm:inline">&nbsp;na reunião</span>
+              </>
+            )}
             <kbd className="ml-2 hidden rounded bg-black/15 px-1.5 text-[10px] sm:inline">E</kbd>
           </button>
         )}

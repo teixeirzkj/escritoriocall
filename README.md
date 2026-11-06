@@ -12,7 +12,8 @@ Escritório 2D em pixel art onde a equipe anda, se esbarra e conversa por **voz 
 
 **Mapa e movimento**
 - Mapa top-down com área de trabalho, quatro salas de reunião (12, 6, 4 e 2 lugares), copa, corredor e área de lazer com piscina e salão de jogos.
-- WASD/setas, joystick no celular, colisão com paredes e móveis, zoom, e `Ctrl + arrastar` para mover o mapa.
+- WASD/setas, colisão com paredes e móveis, zoom, e `Ctrl + arrastar` para mover o mapa.
+- **Celular:** joystick, pinça para zoom, dois dedos para mover o mapa, barra compacta com menu "Mais" e instalação na tela inicial (PWA).
 - Clique em objetos: sentar em sofás, banquetas e pufes; abrir a geladeira, pegar café ou lanche.
 - Jogos de verdade nas mesas: pingue-pongue e totó para 2 pessoas em tempo real (ou contra o computador), sinuca e fliperama com recorde.
 - Piscina: dá para nadar e pular da borda (barra de espaço).
@@ -22,9 +23,15 @@ Escritório 2D em pixel art onde a equipe anda, se esbarra e conversa por **voz 
 - Proximidade com raio configurável (modos *fade* e *cutoff*); paredes das salas isolam o som.
 - Reuniões em salas LiveKit separadas, com capacidade e acesso validados no servidor.
 - Tela de reunião no estilo Meet: grade de câmeras em 720p, tela compartilhada em 1080p em destaque, modo ampliado, fixar participante, trocar de sala, minimizar para ver o mapa e **janela flutuante** (Picture-in-Picture) visível em outras abas.
+- **Quadro branco** na reunião: todos da sala desenham juntos, com cores, borracha, desfazer, limpar e baixar a imagem. Quem chega recebe o que já foi desenhado.
 - Sala trancada: quem chega **bate na porta** e alguém de dentro abre.
 - Fundo da câmera: desfoque, imagens prontas ou imagem própria.
 - Caixa de som por sala: cole um link do YouTube e todos da reunião ouvem em sincronia, com fila e repetição.
+
+**Agenda das salas**
+- Reserve uma sala com nome, dia, horário, duração e convidados; horários que se sobrepõem são bloqueados.
+- Os convidados recebem um aviso com som 5 minutos antes, com o botão "Entrar".
+- A sala mostra "Reservada" no mapa e na reunião, e cada reserva tem o atalho "Adicionar ao Google Agenda".
 
 **Convivência**
 - Status (Disponível, Ocupado, Almoçando, Ausente, Não perturbe).
@@ -48,6 +55,7 @@ Navegador ──HTTPS──► Next.js (Vercel)
    │                   ├─ /api/messages        chat: valida, grava e publica
    │                   ├─ /api/music           caixa de som
    │                   ├─ /api/rooms/*         trancar sala e bater na porta
+   │                   ├─ /api/bookings        agenda das salas
    │                   └─ /api/ring /desk /usage
    ├──WebSocket──► Ably      presença, movimento, chat, avisos
    ├──WebRTC─────► LiveKit   áudio, vídeo e tela
@@ -70,7 +78,7 @@ src/
   lib/realtime/        Ably (cliente e servidor)
   lib/media/           LiveKit e efeitos de fundo
 supabase/migrations/   esquema, RLS e dados iniciais
-tests/                 mapa, colisão, proximidade e validações
+tests/                 mapa, colisão, proximidade, agenda, quadro e validações
 ```
 
 Toda a arte (personagens, pisos e móveis) é desenhada por código em `src/lib/game/art`.
@@ -79,7 +87,7 @@ Toda a arte (personagens, pisos e móveis) é desenhada por código em `src/lib/
 
 ## Banco de dados
 
-Tabelas: `profiles`, `avatars`, `offices`, `office_members` (com mesa fixa), `rooms` (com caixa de som e tranca), `room_members`, `messages`, `user_settings` e `media_usage`.
+Tabelas: `profiles`, `avatars`, `offices`, `office_members` (com mesa fixa), `rooms` (com caixa de som e tranca), `room_members`, `room_bookings`, `messages`, `user_settings` e `media_usage`.
 
 - RLS em todas as tabelas, com regras centralizadas em funções (`is_admin`, `is_office_member`, `can_access_room`...).
 - O usuário não consegue alterar o próprio papel.

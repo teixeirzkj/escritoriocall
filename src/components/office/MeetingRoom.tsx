@@ -14,6 +14,7 @@ import {
   Minimize2,
   MonitorUp,
   Pin,
+  PenLine,
   PictureInPicture2,
   PinOff,
   Shrink,
@@ -24,7 +25,9 @@ import { AvatarThumb } from "@/components/AvatarThumb";
 import type { AvatarConfig } from "@/lib/avatar";
 import type { MediaParticipant, VideoTile } from "@/lib/media/useMedia";
 import type { RoomInfo } from "@/lib/types";
+import type { BoardState, Stroke } from "@/lib/board";
 import { TrackVideo } from "./VideoTiles";
+import { Whiteboard } from "./Whiteboard";
 
 function subscribeResize(cb: () => void) {
   window.addEventListener("resize", cb);
@@ -81,6 +84,16 @@ interface Props {
   locked: boolean;
   lockBusy: boolean;
   onToggleLock: () => void;
+  meId: string;
+  /** Quadro branco compartilhado da sala. */
+  board: BoardState;
+  onBoardOpen: () => void;
+  onBoardClose: () => void;
+  onBoardStroke: (s: Stroke, final: boolean) => void;
+  onBoardUndo: () => void;
+  onBoardClear: () => void;
+  /** Reserva acontecendo agora nesta sala (texto curto), se houver. */
+  bookingLabel: string | null;
 }
 
 /** Tela da reunião: ocupa a tela toda, câmeras grandes e tela compartilhada em destaque. */
@@ -104,6 +117,14 @@ export function MeetingRoom({
   locked,
   lockBusy,
   onToggleLock,
+  meId,
+  board,
+  onBoardOpen,
+  onBoardClose,
+  onBoardStroke,
+  onBoardUndo,
+  onBoardClear,
+  bookingLabel,
 }: Props) {
   const narrow = useSyncExternalStore(subscribeResize, isNarrowNow, () => false);
   const [pinned, setPinned] = useState<string | null>(null);
@@ -182,17 +203,32 @@ export function MeetingRoom({
   const screens = tiles.filter((t) => t.source === "screen");
   const camOf = (id: string) => tiles.find((t) => t.identity === id && t.source === "camera");
 
-  // Destaque: o que foi fixado; senão a primeira tela compartilhada.
+  // Destaque: o que foi fixado; senão o quadro aberto; senão a primeira tela compartilhada.
   const focus = useMemo(() => {
+    if (pinned === "board" && board.open) return { kind: "board" as const };
     if (pinned) {
       const scr = screens.find((s) => s.key === pinned);
       if (scr) return { kind: "screen" as const, tile: scr };
       const p = participants.find((x) => x.identity === pinned);
       if (p) return { kind: "person" as const, p };
     }
+    if (board.open) return { kind: "board" as const };
     if (screens[0]) return { kind: "screen" as const, tile: screens[0] };
     return null;
-  }, [pinned, screens, participants]);
+  }, [pinned, screens, participants, board.open]);
+  const boardView = (
+    <Whiteboard
+      strokes={board.strokes}
+      meId={meId}
+      onStroke={onBoardStroke}
+      onUndo={onBoardUndo}
+      onClear={onBoardClear}
+      onClose={() => {
+        setPinned(null);
+        onBoardClose();
+      }}
+    />
+  );
 
   const togglePin = (key: string) => setPinned((cur) => (cur === key ? null : key));
 
@@ -252,6 +288,7 @@ export function MeetingRoom({
 
   if (minimized) {
     const mainScreen = focus?.kind === "screen" ? focus.tile : null;
+    const showBoard = focus?.kind === "board";
     const width = MINI_WIDTHS[miniSize];
     const cols = count <= 1 ? 1 : count <= 4 ? 2 : 3;
     return (
@@ -307,6 +344,16 @@ export function MeetingRoom({
           </div>
         </header>
         <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+          {showBoard && (
+            <button
+              type="button"
+              onClick={onExpand}
+              className="mb-2 block aspect-video w-full overflow-hidden rounded-xl bg-white"
+              aria-label="Abrir o quadro em tela cheia"
+            >
+              <Whiteboard strokes={board.strokes} meId={meId} readOnly />
+            </button>
+          )}
           {mainScreen && (
             <button
               type="button"
@@ -337,38 +384,62 @@ export function MeetingRoom({
       className="fixed inset-0 z-[35] flex flex-col bg-[var(--bg)] pb-20 sm:pb-24"
       aria-label={`Reunião: ${room.name}`}
     >
-      <header className="flex items-center justify-between gap-3 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2.5 text-white">
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 sm:flex-nowrap sm:px-4 sm:py-3">
+        <div className="flex min-w-0 basis-full items-center gap-2.5 text-white sm:basis-auto">
           <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-[var(--coral)]" />
-          <h1 className="truncate text-base font-semibold sm:text-lg">{room.name}</h1>
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold sm:text-lg">{room.name}</h1>
+            {bookingLabel && <p className="truncate text-xs text-[var(--muted)]">{bookingLabel}</p>}
+          </div>
           <span className="flex shrink-0 items-center gap-1 text-sm text-[var(--muted)]">
             <Users size={14} /> {count}/{room.capacity}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (!board.open) {
+              setPinned("board");
+              onBoardOpen();
+            } else if (focus?.kind !== "board") setPinned("board");
+            else {
+              setPinned(null);
+              onBoardClose();
+            }
+          }}
+          aria-pressed={board.open}
+          className={`h-9 shrink-0 px-3 text-sm ${board.open ? "btn-primary" : "btn-ghost"}`}
+          aria-label={board.open ? (focus?.kind === "board" ? "Fechar o quadro branco" : "Ver o quadro branco") : "Abrir o quadro branco"}
+          title="Quadro branco: todos da sala desenham juntos"
+        >
+          <PenLine size={15} /> <span className="hidden md:inline">Quadro</span>
+        </button>
         <button
           type="button"
           onClick={onToggleLock}
           disabled={lockBusy}
           aria-pressed={locked}
-          className={`h-9 px-3 text-sm ${locked ? "btn-primary" : "btn-ghost"}`}
+          className={`h-9 shrink-0 px-3 text-sm ${locked ? "btn-primary" : "btn-ghost"}`}
           aria-label={locked ? "Destrancar a sala" : "Trancar a sala (quem chegar precisa bater na porta)"}
           title={locked ? "Sala trancada: clique para destrancar" : "Trancar: quem chegar precisa bater na porta"}
         >
           {locked ? <DoorClosed size={15} /> : <DoorOpen size={15} />}
           <span className="hidden lg:inline">{locked ? "Trancada" : "Trancar"}</span>
         </button>
+        {!narrow && (
         <button
           type="button"
           onClick={onPip}
           aria-pressed={pipOpen}
-          className={`h-9 px-3 text-sm ${pipOpen ? "btn-primary" : "btn-ghost"}`}
+          className={`h-9 shrink-0 px-3 text-sm ${pipOpen ? "btn-primary" : "btn-ghost"}`}
           aria-label={pipOpen ? "Fechar a janela flutuante" : "Abrir janela flutuante (fica visível em outras abas)"}
           title="Janela flutuante: continua visível em outras abas e programas"
         >
           <PictureInPicture2 size={15} /> <span className="hidden md:inline">{pipOpen ? "Fechar flutuante" : "Janela flutuante"}</span>
         </button>
-        <button type="button" onClick={onMinimize} className="btn-ghost h-9 px-3 text-sm" aria-label="Ver o mapa (a chamada continua)">
+        )}
+        <button type="button" onClick={onMinimize} className="btn-ghost h-9 shrink-0 px-3 text-sm" aria-label="Ver o mapa (a chamada continua)">
           <MapIcon size={15} /> <span className="hidden sm:inline">Ver mapa</span>
         </button>
         {others.length > 0 && (
@@ -378,12 +449,13 @@ export function MeetingRoom({
               onClick={() => setMenu((m) => !m)}
               disabled={switching}
               aria-expanded={menu}
-              className="btn-ghost h-9 px-3 text-sm"
+              aria-label={switching ? "Trocando de sala" : "Trocar de sala"}
+              className="btn-ghost h-9 shrink-0 px-3 text-sm"
             >
-              <ArrowLeftRight size={15} /> {switching ? "Trocando…" : "Trocar de sala"}
+              <ArrowLeftRight size={15} /> <span className="hidden sm:inline">{switching ? "Trocando…" : "Trocar de sala"}</span>
             </button>
             {menu && (
-              <ul className="panel-in absolute right-0 top-11 z-10 w-72 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] p-1 shadow-2xl">
+              <ul className="panel-in fixed right-3 top-14 z-10 w-[min(18rem,calc(100vw-24px))] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] p-1 shadow-2xl sm:absolute sm:right-0 sm:top-11">
                 {others.map((r) => {
                   const occ = occupancy.get(r.id) ?? 0;
                   const full = occ >= r.capacity;
@@ -457,8 +529,10 @@ export function MeetingRoom({
           </div>
         ) : focus ? (
           <div className="flex h-full flex-col gap-3 lg:flex-row">
-            <div className="group relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-black">
-              {focus.kind === "screen" ? (
+            <div className={`group relative min-h-0 flex-1 overflow-hidden rounded-2xl ${focus.kind === "board" ? "bg-[var(--panel-2)] p-2" : "bg-black"}`}>
+              {focus.kind === "board" ? (
+                boardView
+              ) : focus.kind === "screen" ? (
                 <>
                   <TrackVideo tile={focus.tile} className="h-full w-full object-contain" />
                   <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-lg bg-black/70 px-2.5 py-1 text-sm text-white">
@@ -491,6 +565,19 @@ export function MeetingRoom({
               )}
             </div>
             <div className="flex shrink-0 gap-2 overflow-x-auto lg:w-72 lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden">
+              {board.open && focus.kind !== "board" && (
+                <button
+                  type="button"
+                  onClick={() => setPinned("board")}
+                  className="relative aspect-video h-28 shrink-0 overflow-hidden rounded-xl bg-white lg:h-auto lg:w-full"
+                  aria-label="Destacar o quadro branco"
+                >
+                  <Whiteboard strokes={board.strokes} meId={meId} readOnly />
+                  <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[11px] text-white">
+                    <PenLine size={11} className="mr-1 inline" /> Quadro
+                  </span>
+                </button>
+              )}
               {screens
                 .filter((s) => focus.kind !== "screen" || s.key !== focus.tile.key)
                 .map((s) => (

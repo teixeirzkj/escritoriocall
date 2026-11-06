@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Crosshair, MapPin, Minus, Plus, Shield } from "lucide-react";
+import { ArrowLeft, CalendarDays, Crosshair, MapPin, Minus, Plus, Shield } from "lucide-react";
 import Link from "next/link";
 import type { MediaStatus } from "@/lib/media/useMedia";
 import type { RealtimeState } from "@/lib/realtime/useOfficeRealtime";
@@ -21,6 +21,9 @@ interface Props {
   nearCount: number;
   status: StatusKey;
   onStatus: (s: StatusKey) => void;
+  onAgenda: () => void;
+  /** Minhas reuniões de hoje (ainda por acontecer). */
+  agendaCount: number;
 }
 
 const RT_LABEL: Record<RealtimeState, { text: string; color: string }> = {
@@ -38,8 +41,8 @@ const RT_LABEL: Record<RealtimeState, { text: string; color: string }> = {
 export function TopBar(p: Props) {
   const rt = RT_LABEL[p.realtimeState];
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-3 p-3 sm:p-4">
-      <div className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-2xl border border-white/10 bg-[#131c42]/90 py-1.5 pl-1.5 pr-3 shadow-xl backdrop-blur">
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-2 p-2 sm:gap-3 sm:p-4">
+      <div className="pointer-events-auto flex min-w-0 items-center gap-1.5 rounded-2xl border border-white/10 bg-[#131c42]/90 py-1.5 pl-1.5 pr-2 shadow-xl backdrop-blur sm:gap-2 sm:pr-3">
         <Link
           href="/escritorio"
           className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[var(--muted)] hover:bg-white/10 hover:text-white"
@@ -56,11 +59,14 @@ export function TopBar(p: Props) {
               {rt.text}
             </span>
             <span aria-hidden>·</span>
-            <span>{p.online} no escritório</span>
+            <span className="whitespace-nowrap">
+              {p.online} <span className="hidden sm:inline">no escritório</span>
+              <span className="sm:hidden">{p.online === 1 ? "pessoa" : "pessoas"}</span>
+            </span>
             {p.nearCount > 0 && (
               <>
-                <span aria-hidden>·</span>
-                <span className="text-[var(--amber)]">{p.nearCount} por perto</span>
+                <span aria-hidden className="hidden sm:inline">·</span>
+                <span className="hidden whitespace-nowrap text-[var(--amber)] sm:inline">{p.nearCount} por perto</span>
               </>
             )}
           </div>
@@ -68,7 +74,22 @@ export function TopBar(p: Props) {
         <StatusPicker value={p.status} onChange={p.onStatus} />
       </div>
 
-      <div className="pointer-events-auto flex items-center gap-2">
+      <div className="pointer-events-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <button
+          type="button"
+          onClick={p.onAgenda}
+          className="relative flex h-9 items-center gap-1.5 rounded-xl border border-white/10 bg-[#131c42]/90 px-2.5 text-xs text-[var(--text)] shadow-xl backdrop-blur hover:bg-white/10 sm:px-3"
+          aria-label={p.agendaCount ? `Agenda das salas (${p.agendaCount} reunião(ões) suas hoje)` : "Agenda das salas"}
+          title="Agenda das salas"
+        >
+          <CalendarDays size={15} className="text-[var(--amber)]" />
+          <span className="hidden sm:inline">Agenda</span>
+          {p.agendaCount > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-[var(--coral)] px-1 text-center text-[10px] font-bold leading-5 text-white">
+              {p.agendaCount}
+            </span>
+          )}
+        </button>
         {p.zoneLabel && (
           <div className="hidden items-center gap-1.5 rounded-xl border border-white/10 bg-[#131c42]/90 px-3 py-2 text-xs text-[var(--text)] shadow-xl backdrop-blur md:flex">
             <MapPin size={14} className="text-[var(--amber)]" />
@@ -86,17 +107,17 @@ export function TopBar(p: Props) {
         <div className="flex items-center rounded-xl border border-white/10 bg-[#131c42]/90 shadow-xl backdrop-blur">
           <button
             type="button"
-            className="grid h-9 w-9 place-items-center rounded-l-xl text-[var(--muted)] hover:bg-white/10 hover:text-white"
+            className="hidden h-9 w-9 place-items-center rounded-l-xl text-[var(--muted)] hover:bg-white/10 hover:text-white sm:grid"
             onClick={() => p.onZoom(p.zoom - 0.25)}
             aria-label="Afastar"
             title="Afastar"
           >
             <Minus size={16} />
           </button>
-          <span className="w-11 text-center text-xs tabular-nums text-[var(--muted)]">{Math.round(p.zoom * 100)}%</span>
+          <span className="hidden w-11 text-center text-xs tabular-nums text-[var(--muted)] sm:inline">{Math.round(p.zoom * 100)}%</span>
           <button
             type="button"
-            className="grid h-9 w-9 place-items-center text-[var(--muted)] hover:bg-white/10 hover:text-white"
+            className="hidden h-9 w-9 place-items-center text-[var(--muted)] hover:bg-white/10 hover:text-white sm:grid"
             onClick={() => p.onZoom(p.zoom + 0.25)}
             aria-label="Aproximar"
             title="Aproximar"
@@ -105,7 +126,7 @@ export function TopBar(p: Props) {
           </button>
           <button
             type="button"
-            className="grid h-9 w-9 place-items-center rounded-r-xl border-l border-white/10 text-[var(--muted)] hover:bg-white/10 hover:text-white"
+            className="grid h-9 w-9 place-items-center rounded-xl text-[var(--muted)] hover:bg-white/10 hover:text-white sm:rounded-l-none sm:rounded-r-xl sm:border-l sm:border-white/10"
             onClick={p.onRecenter}
             aria-label="Centralizar o mapa"
             title="Centralizar o mapa (segure Ctrl e arraste para mover)"

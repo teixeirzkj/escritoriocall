@@ -168,6 +168,15 @@ export class OfficeScene extends Phaser.Scene {
     };
     this.input.on("pointerup", endPan);
     this.input.on("pointerupoutside", endPan);
+
+    // Celular: pinça com dois dedos dá zoom; arrastar com dois dedos move o mapa.
+    this.input.on("pointerdown", () => this.updatePinch(true));
+    this.input.on("pointermove", () => this.updatePinch(false));
+    const endPinch = () => {
+      if (this.touchesDown().length < 2) this.pinch = null;
+    };
+    this.input.on("pointerup", endPinch);
+    this.input.on("pointerupoutside", endPinch);
     const onKey = (e: KeyboardEvent) => {
       if (this.panning) return;
       this.setCursor(e.type === "keydown" && (e.key === "Control" || e.key === "Meta") ? "grab" : null);
@@ -183,6 +192,37 @@ export class OfficeScene extends Phaser.Scene {
 
     this.emitZone(true);
     this.bridge.onReady?.();
+  }
+
+  private pinch: { d: number; z: number; mx: number; my: number } | null = null;
+
+  private touchesDown() {
+    return this.input.manager.pointers.filter((p) => p.isDown && p.wasTouch);
+  }
+
+  private updatePinch(start: boolean) {
+    const t = this.touchesDown();
+    if (t.length < 2) {
+      this.pinch = null;
+      return;
+    }
+    const [a, b] = t;
+    const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    if (start || !this.pinch) {
+      this.pinch = { d, z: this.bridge.zoom, mx, my };
+      return;
+    }
+    const cz = this.cameras.main.zoom;
+    this.pan.x += (mx - this.pinch.mx) / cz;
+    this.pan.y += (my - this.pinch.my) / cz;
+    this.pinch.mx = mx;
+    this.pinch.my = my;
+    const z = Math.round(Phaser.Math.Clamp((this.pinch.z * d) / this.pinch.d, 0.5, 2.5) * 100) / 100;
+    this.bridge.zoom = z;
+    this.applyZoom();
+    this.bridge.onPinchZoom?.(z);
   }
 
   /** O clique foi no mapa mesmo (e não num botão/menu da interface por cima dele)? */

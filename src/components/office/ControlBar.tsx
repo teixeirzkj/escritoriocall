@@ -7,13 +7,14 @@ import {
   Mic,
   MicOff,
   MonitorUp,
+  MoreHorizontal,
   Settings,
   Sparkles,
   Users,
   Video,
   VideoOff,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MediaStatus } from "@/lib/media/useMedia";
 import { ReactionsButton } from "./ReactionsButton";
 
@@ -96,9 +97,25 @@ function Btn({
   );
 }
 
+const noop = () => () => {};
+/** Compartilhar tela existe neste navegador? (no celular, em geral não). */
+const canShareScreen = () => typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getDisplayMedia);
+
 /** Barra de controles discreta na parte inferior. */
 export function ControlBar(p: Props) {
   const mediaDisabled = p.mediaStatus === "unconfigured";
+  const screenOk = useSyncExternalStore(noop, canShareScreen, () => true);
+  const [more, setMore] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!more) return;
+    const onDown = (e: PointerEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMore(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
+  }, [more]);
+  const item = "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-white hover:bg-white/10 disabled:opacity-40";
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-3 z-[38] flex justify-center px-3 sm:bottom-5">
       <div className="pointer-events-auto flex items-center gap-1.5 rounded-2xl border border-white/10 bg-[#131c42]/90 p-1.5 shadow-2xl shadow-black/40 backdrop-blur sm:gap-2 sm:p-2">
@@ -120,29 +137,82 @@ export function ControlBar(p: Props) {
         >
           {p.cam ? <Video size={20} /> : <VideoOff size={20} />}
         </Btn>
-        <Btn label="Efeitos de fundo" active={p.backgroundOn} disabled={mediaDisabled} onClick={p.onBackground}>
-          <Sparkles size={20} />
-        </Btn>
-        <Btn
-          label={p.screen ? "Parar compartilhamento" : "Compartilhar tela"}
-          active={p.screen}
-          disabled={!p.mediaReady}
-          onClick={p.onScreen}
-        >
-          <MonitorUp size={20} />
-        </Btn>
+        <div className="hidden sm:contents">
+          <Btn label="Efeitos de fundo" active={p.backgroundOn} disabled={mediaDisabled} onClick={p.onBackground}>
+            <Sparkles size={20} />
+          </Btn>
+          {screenOk && (
+            <Btn
+              label={p.screen ? "Parar compartilhamento" : "Compartilhar tela"}
+              active={p.screen}
+              disabled={!p.mediaReady}
+              onClick={p.onScreen}
+            >
+              <MonitorUp size={20} />
+            </Btn>
+          )}
+        </div>
         <ReactionsButton hand={p.hand} onReact={p.onReact} onHand={p.onHand} onPunch={p.onPunch} />
-        <span className="mx-0.5 h-7 w-px bg-white/10" aria-hidden />
+        <span className="mx-0.5 hidden h-7 w-px bg-white/10 sm:block" aria-hidden />
         <Btn label="Participantes" active={p.panel === "participants"} onClick={p.onParticipants} badge={p.participantsCount}>
           <Users size={20} />
         </Btn>
         <Btn label="Chat" active={p.panel === "chat"} onClick={p.onChat} badge={p.unread || undefined}>
           <MessageSquare size={20} />
         </Btn>
-        <Btn label="Configurações" onClick={p.onSettings}>
-          <Settings size={20} />
-        </Btn>
-        <span className="mx-0.5 h-7 w-px bg-white/10" aria-hidden />
+        <div className="hidden sm:contents">
+          <Btn label="Configurações" onClick={p.onSettings}>
+            <Settings size={20} />
+          </Btn>
+        </div>
+        {/* Celular: o resto fica no menu "Mais". */}
+        <div ref={moreRef} className="relative sm:hidden">
+          <Btn label="Mais opções" active={more || p.backgroundOn || p.screen} onClick={() => setMore((m) => !m)}>
+            <MoreHorizontal size={20} />
+          </Btn>
+          {more && (
+            <div className="panel-in fixed inset-x-3 bottom-[76px] z-50 rounded-2xl border border-white/10 bg-[var(--panel)] p-1.5 shadow-2xl" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className={item}
+                disabled={mediaDisabled}
+                onClick={() => {
+                  setMore(false);
+                  p.onBackground();
+                }}
+              >
+                <Sparkles size={18} className="text-[var(--amber)]" /> Efeitos de fundo{p.backgroundOn ? " (ligado)" : ""}
+              </button>
+              {screenOk && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={item}
+                  disabled={!p.mediaReady}
+                  onClick={() => {
+                    setMore(false);
+                    p.onScreen();
+                  }}
+                >
+                  <MonitorUp size={18} className="text-[var(--amber)]" /> {p.screen ? "Parar compartilhamento" : "Compartilhar tela"}
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                className={item}
+                onClick={() => {
+                  setMore(false);
+                  p.onSettings();
+                }}
+              >
+                <Settings size={18} className="text-[var(--amber)]" /> Configurações
+              </button>
+            </div>
+          )}
+        </div>
+        <span className="mx-0.5 hidden h-7 w-px bg-white/10 sm:block" aria-hidden />
         <Btn label={p.inMeeting ? "Sair da reunião" : "Sair do escritório"} danger onClick={p.onLeave}>
           {p.inMeeting ? <DoorOpen size={20} /> : <LogOut size={20} />}
         </Btn>

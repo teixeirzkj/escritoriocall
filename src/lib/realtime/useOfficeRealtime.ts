@@ -6,6 +6,7 @@ import { parseAvatar } from "@/lib/avatar";
 import { statusInfo } from "@/lib/status";
 import type { GameBridge } from "@/lib/game/bridge";
 import type { MusicEvent } from "@/lib/music";
+import type { BoardMsg } from "@/lib/board";
 import type { ChatMessage } from "@/lib/types";
 import {
   ch,
@@ -70,6 +71,8 @@ interface Options {
   onJump?: (fromId: string) => void;
   /** Mensagem de jogo (mesas de jogos). */
   onGame?: (fromId: string, data: GameMsg) => void;
+  /** Quadro branco da reunião. */
+  onBoard?: (fromId: string, data: BoardMsg) => void;
 }
 
 /** Emoji(s) antes do nome no mapa: status (se não for "disponível") e mão levantada. */
@@ -273,6 +276,9 @@ export function useOfficeRealtime(opts: Options) {
         await channel.subscribe("game", (m) => {
           if (m.clientId && m.clientId !== myId && m.data && typeof m.data === "object") cbRef.current.onGame?.(m.clientId, m.data as GameMsg);
         });
+        await channel.subscribe("board", (m) => {
+          if (m.clientId && m.clientId !== myId && m.data && typeof m.data === "object") cbRef.current.onBoard?.(m.clientId, m.data as BoardMsg);
+        });
         await channel.subscribe("punch", (m) => {
           const to = (m.data as { to?: unknown })?.to;
           if (m.clientId && m.clientId !== myId && typeof to === "string") cbRef.current.onPunch?.(m.clientId, to);
@@ -427,6 +433,7 @@ export function useOfficeRealtime(opts: Options) {
   }, []);
   const sendJump = useCallback(() => publishOffice("jump", {}), [publishOffice]);
   const sendGame = useCallback((data: GameMsg) => publishOffice("game", data), [publishOffice]);
+  const sendBoard = useCallback((data: BoardMsg) => publishOffice("board", data), [publishOffice]);
 
-  return { state, roster, reportMove, updatePresence, setRoomChannel, sendReaction, sendPunch, sendJump, sendGame };
+  return { state, roster, reportMove, updatePresence, setRoomChannel, sendReaction, sendPunch, sendJump, sendGame, sendBoard };
 }

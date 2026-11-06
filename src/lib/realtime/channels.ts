@@ -57,7 +57,8 @@ export const DIR_CODES = ["down", "left", "right", "up"] as const;
 export type ControlMsg =
   | { type: "kick"; userId: string; reason?: string }
   | { type: "rooms-updated" }
-  | { type: "office-updated" };
+  | { type: "office-updated" }
+  | { type: "bookings-updated" };
 
 /**
  * Mensagens dos jogos de mesa (pingue-pongue / totó), no canal do escritório.
