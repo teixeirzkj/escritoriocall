@@ -57,6 +57,8 @@ function attachable(track: MediaStreamTrack): AttachableTrack {
 interface RemoteEntry {
   ref: RemoteRef;
   track: MediaStreamTrack;
+  /** Quando chegou (para notar vídeo que não começa). */
+  since: number;
   audio?: HTMLAudioElement;
   analyser?: AnalyserNode;
   source?: MediaStreamAudioSourceNode;
@@ -132,6 +134,8 @@ export function useCfMedia(opts: Options) {
   const remoteRef = useRef<Map<string, RemoteEntry>>(new Map());
   const failedRef = useRef<Map<string, number>>(new Map());
   const qualityRef = useRef<string>("");
+  /** Vídeos pedidos de novo por não terem começado (evita repetir sem parar). */
+  const stuckRef = useRef<Map<string, number>>(new Map());
   const audioHostRef = useRef<HTMLDivElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const micAnalyserRef = useRef<{ an: AnalyserNode; src: MediaStreamAudioSourceNode } | null>(null);
@@ -235,7 +239,7 @@ export function useCfMedia(opts: Options) {
   const attachRemote = useCallback(
     (key: string, ref: RemoteRef, track: MediaStreamTrack) => {
       detachRemote(key);
-      const e: RemoteEntry = { ref, track };
+      const e: RemoteEntry = { ref, track, since: Date.now() };
       if (track.kind === "audio") {
         const el = document.createElement("audio");
         el.autoplay = true;
@@ -471,6 +475,19 @@ export function useCfMedia(opts: Options) {
       const rid = camRid();
       const failed = await s.pull(todo, (r) => (r.source === "cam" ? rid : undefined));
       for (const k of failed) failedRef.current.set(k, now);
+    }
+    // Vídeo que chegou mas não mostra imagem há 6 s: pede de novo (uma vez por minuto, no máximo).
+    const stuck = Array.from(remoteRef.current.entries())
+      .filter(([k, e]) => e.track.kind === "video" && e.track.muted && now - e.since > 6000 && now - (stuckRef.current.get(k) ?? 0) > 60_000)
+      .map(([k]) => k);
+    if (stuck.length) {
+      for (const k of stuck) stuckRef.current.set(k, now);
+      await s.unpull(stuck);
+      for (const k of stuck) {
+        detachRemote(k);
+        failedRef.current.delete(k);
+      }
+      reconcileRef.current();
     }
     // Qualidade das câmeras recebidas
     const rid = camRid();
