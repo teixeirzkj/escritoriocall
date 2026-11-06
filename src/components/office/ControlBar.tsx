@@ -2,6 +2,8 @@
 
 import {
   DoorOpen,
+  Headphones,
+  HeadphoneOff,
   LogOut,
   MessageSquare,
   Mic,
@@ -29,6 +31,9 @@ interface Props {
   unread: number;
   participantsCount: number;
   onMic: () => void;
+  /** Silenciar tudo (não ouvir ninguém nem os avisos; microfone desligado). */
+  deafened: boolean;
+  onDeafen: () => void;
   onCam: () => void;
   onScreen: () => void;
   onSettings: () => void;
@@ -128,6 +133,15 @@ export function ControlBar(p: Props) {
         >
           {p.mic ? <Mic size={20} /> : <MicOff size={20} />}
         </Btn>
+        <div className="hidden sm:contents">
+          <Btn
+            label={p.deafened ? "Voltar a ouvir" : "Silenciar tudo (não ouvir ninguém)"}
+            off={p.deafened}
+            onClick={p.onDeafen}
+          >
+            {p.deafened ? <HeadphoneOff size={20} /> : <Headphones size={20} />}
+          </Btn>
+        </div>
         <Btn
           label={p.cam ? "Desligar câmera" : "Ligar câmera"}
           active={p.cam}
@@ -167,11 +181,23 @@ export function ControlBar(p: Props) {
         </div>
         {/* Celular: o resto fica no menu "Mais". */}
         <div ref={moreRef} className="relative sm:hidden">
-          <Btn label="Mais opções" active={more || p.backgroundOn || p.screen} onClick={() => setMore((m) => !m)}>
+          <Btn label="Mais opções" active={more || p.backgroundOn || p.screen} off={p.deafened && !more} onClick={() => setMore((m) => !m)}>
             <MoreHorizontal size={20} />
           </Btn>
           {more && (
             <div className="panel-in fixed inset-x-3 bottom-[76px] z-50 rounded-2xl border border-white/10 bg-[var(--panel)] p-1.5 shadow-2xl" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className={item}
+                onClick={() => {
+                  setMore(false);
+                  p.onDeafen();
+                }}
+              >
+                {p.deafened ? <Headphones size={18} className="text-[var(--amber)]" /> : <HeadphoneOff size={18} className="text-[var(--amber)]" />}
+                {p.deafened ? "Voltar a ouvir" : "Silenciar tudo"}
+              </button>
               <button
                 type="button"
                 role="menuitem"

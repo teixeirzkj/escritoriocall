@@ -1273,6 +1273,8 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
         panel={panel}
         unread={chat.totalUnread}
         onMic={media.toggleMic}
+        deafened={media.deafened}
+        onDeafen={() => void media.toggleDeafen()}
         onCam={media.toggleCam}
         onScreen={media.toggleScreen}
         onSettings={() => setSettingsOpen(true)}
@@ -1317,6 +1319,7 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
           roomName={meetingRoom.name}
           music={music}
           onError={(m) => toast(m, "error")}
+          deafened={media.deafened}
         />
       )}
 
@@ -1329,6 +1332,7 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
           roomName={zoneByKey(musicZone)?.label ?? "Área"}
           music={zoneMusic[musicZone] ?? null}
           onError={(m) => toast(m, "error")}
+          deafened={media.deafened}
         />
       )}
 

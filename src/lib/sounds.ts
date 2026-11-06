@@ -4,6 +4,11 @@
  */
 const KEY = "fredy:sons";
 let ctx: AudioContext | null = null;
+/** "Silenciar tudo" ligado: nenhum aviso toca. */
+let deafened = false;
+export function setSoundsDeafened(v: boolean) {
+  deafened = v;
+}
 
 export function soundsEnabled(): boolean {
   try {
@@ -48,7 +53,7 @@ function note(ac: AudioContext, freq: number, start: number, dur: number, type: 
  * "ring": alguém está te chamando (toca 2x). "knock": batida na porta da sala.
  */
 export function playChime(kind: "office" | "room" | "ring" | "knock") {
-  if (!soundsEnabled()) return;
+  if (deafened || !soundsEnabled()) return;
   const ac = audio();
   if (!ac) return;
   const t = ac.currentTime + 0.01;

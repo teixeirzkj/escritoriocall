@@ -38,10 +38,12 @@ interface Props {
   roomName: string;
   music: MusicSnapshot | null;
   onError: (msg: string) => void;
+  /** "Silenciar tudo" ligado: a música fica muda. */
+  deafened?: boolean;
 }
 
 /** Caixa de som da sala: cola um link e toca em sincronia para todos da reunião. */
-export function RoomSpeaker({ officeId, roomId, zone, placement = "meeting", roomName, music, onError }: Props) {
+export function RoomSpeaker({ officeId, roomId, zone, placement = "meeting", roomName, music, onError, deafened = false }: Props) {
   const target = roomId ? { roomId } : { zone };
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
@@ -148,12 +150,13 @@ export function RoomSpeaker({ officeId, roomId, zone, placement = "meeting", roo
 
   // Volume local (só para você).
   useEffect(() => {
-    volumeRef.current = volume;
+    const v = deafened ? 0 : volume;
+    volumeRef.current = v;
     const m = mediaRef.current;
-    if (m instanceof HTMLAudioElement) m.volume = volume / 100;
+    if (m instanceof HTMLAudioElement) m.volume = v / 100;
     else if (m instanceof HTMLIFrameElement)
-      m.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [volume] }), "*");
-  }, [volume]);
+      m.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [v] }), "*");
+  }, [volume, deafened]);
 
   const send = async (body: Record<string, unknown>) => {
     setBusy(true);

@@ -14,6 +14,7 @@ import {
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProximityResult } from "@/lib/game/proximity";
+import { setSoundsDeafened } from "@/lib/sounds";
 import { type BackgroundEffect, BLUR_RADIUS, imageFor, loadEffect, saveEffect } from "./backgrounds";
 
 export type MediaStatus =
@@ -75,6 +76,10 @@ export function useMedia(opts: Options) {
   const [mic, setMic] = useState(opts.initialMic);
   const [cam, setCam] = useState(opts.initialCam);
   const [screen, setScreen] = useState(false);
+  /** "Silenciar tudo": ninguém é ouvido e o microfone fica desligado. */
+  const [deafened, setDeafenedState] = useState(false);
+  const deafRef = useRef(false);
+  const micBeforeDeafRef = useRef(false);
   const [tiles, setTiles] = useState<VideoTile[]>([]);
   const [participants, setParticipants] = useState<MediaParticipant[]>([]);
   const [audioBlocked, setAudioBlocked] = useState(false);
@@ -156,7 +161,7 @@ export function useMedia(opts: Options) {
 
   /** Aplica assinatura/volume por proximidade a um participante remoto. */
   const applyFor = useCallback((p: RemoteParticipant) => {
-    const master = prefsRef.current.masterVolume;
+    const master = deafRef.current ? 0 : prefsRef.current.masterVolume;
     if (targetRef.current.kind === "room") {
       p.setVolume(master);
       return;
@@ -412,23 +417,54 @@ export function useMedia(opts: Options) {
     };
   }, [connect, disconnect]);
 
+  const setMicEnabled = useCallback(
+    async (next: boolean) => {
+      desiredRef.current.mic = next;
+      setMic(next);
+      const room = roomRef.current;
+      if (!room) return next;
+      try {
+        await room.localParticipant.setMicrophoneEnabled(next);
+      } catch (e) {
+        desiredRef.current.mic = false;
+        setMic(false);
+        cbRef.current.onError(permissionMessage(e, "microfone"));
+        return false;
+      }
+      rebuild();
+      return next;
+    },
+    [rebuild],
+  );
+
+  const setDeaf = useCallback(
+    (on: boolean) => {
+      deafRef.current = on;
+      setDeafenedState(on);
+      setSoundsDeafened(on);
+      applyAll();
+    },
+    [applyAll],
+  );
+
   const toggleMic = useCallback(async () => {
     const next = !desiredRef.current.mic;
-    desiredRef.current.mic = next;
-    setMic(next);
-    const room = roomRef.current;
-    if (!room) return next;
-    try {
-      await room.localParticipant.setMicrophoneEnabled(next);
-    } catch (e) {
-      desiredRef.current.mic = false;
-      setMic(false);
-      cbRef.current.onError(permissionMessage(e, "microfone"));
-      return false;
+    // Ligar o microfone tira o "silenciar tudo" (como no Discord).
+    if (next && deafRef.current) setDeaf(false);
+    return setMicEnabled(next);
+  }, [setMicEnabled, setDeaf]);
+
+  /** Silenciar tudo: corta o som de todos (e os avisos) e desliga o microfone; ao voltar, restaura o microfone. */
+  const toggleDeafen = useCallback(async () => {
+    if (!deafRef.current) {
+      micBeforeDeafRef.current = desiredRef.current.mic;
+      setDeaf(true);
+      if (desiredRef.current.mic) await setMicEnabled(false);
+    } else {
+      setDeaf(false);
+      if (micBeforeDeafRef.current) await setMicEnabled(true);
     }
-    rebuild();
-    return next;
-  }, [rebuild]);
+  }, [setDeaf, setMicEnabled]);
 
   const toggleCam = useCallback(async () => {
     const next = !desiredRef.current.cam;
@@ -542,6 +578,8 @@ export function useMedia(opts: Options) {
     background,
     setBackground,
     toggleMic,
+    deafened,
+    toggleDeafen,
     toggleCam,
     toggleScreen,
     setProximity,

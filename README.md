@@ -38,6 +38,7 @@ Escritório 2D em pixel art onde a equipe anda, se esbarra e conversa por **voz 
 
 **Convivência**
 - Status (Disponível, Ocupado, Almoçando, Ausente, Não perturbe).
+- Silenciar tudo: um botão corta o som de todos, os avisos e a música, e desliga o microfone (como o "ensurdecer" do Discord).
 - Chamar alguém (toque + atalho para ir até a pessoa), reações com emoji, levantar a mão e um soco de brincadeira 👊 (tecla `F`).
 - Avisos com som quando alguém chega na sede ou entra na sua sala.
 - Chat geral, por sala e privado, com histórico.
