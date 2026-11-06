@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw, Target } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   aimGuide,
@@ -72,10 +72,9 @@ export function Pool8Game({
   const pendingRef = useRef<{ st: PoolState; at: number } | null>(null);
   const aimRef = useRef(0);
   const oppAimRef = useRef<number | null>(null);
-  const powerRef = useRef(0.55);
+  const powerRef = useRef(0);
   const dragRef = useRef<"aim" | "cue" | null>(null);
   const lastSendRef = useRef(0);
-  const [power, setPower] = useState(0.55);
   const [ui, setUi] = useState(() => ({ ...initial, moving: false }));
 
   const myTurn = ui.turn === me;
@@ -166,24 +165,6 @@ export function Pool8Game({
     },
     [],
   );
-
-  // Teclado: setas giram a mira (Shift = mais rápido), espaço taca.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement && e.target.type !== "range") return;
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        e.preventDefault();
-        aimRef.current += (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 0.04 : 0.006);
-        sendAim(aimRef.current);
-      } else if (e.key === " ") {
-        e.preventDefault();
-        shoot();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shoot]);
 
   // Física + desenho
   useEffect(() => {
@@ -291,7 +272,7 @@ export function Pool8Game({
       }
       // Taco
       if (!faint) {
-        const pull = 6 + powerRef.current * 40;
+        const pull = 4 + powerRef.current * 70;
         const ux = Math.cos(angle);
         const uy = Math.sin(angle);
         ctx.strokeStyle = "#d8b07a";
@@ -329,7 +310,15 @@ export function Pool8Game({
       const st = stateRef.current;
       if (!simRef.current && st.winner === null) {
         const mine = solo || st.turn === me;
-        if (mine && dragRef.current !== "cue") drawGuide(aimRef.current, false);
+        if (mine && dragRef.current === "aim") {
+          drawGuide(aimRef.current, false);
+          // Barra de força
+          const pw = powerRef.current;
+          ctx.fillStyle = "rgba(0,0,0,0.45)";
+          ctx.fillRect(M + 6, H - M - 14, 124, 10);
+          ctx.fillStyle = pw > 0.8 ? "#e5484d" : pw > 0.5 ? "#f5a524" : "#7ee0a1";
+          ctx.fillRect(M + 8, H - M - 12, 120 * pw, 6);
+        }
         else if (!mine && oppAimRef.current !== null) drawGuide(oppAimRef.current, true);
         if (mine && st.inHand) {
           const cue = ballsRef.current[0];
@@ -365,10 +354,17 @@ export function Pool8Game({
     const r = e.currentTarget.getBoundingClientRect();
     return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
   };
-  const aimAt = (p: { x: number; y: number }) => {
+  /** Puxar o taco: a tacada vai na direção oposta ao arraste; quanto mais longe da branca, mais forte. */
+  const PULL_MIN = 8;
+  const PULL_MAX = 160;
+  const pullTo = (p: { x: number; y: number }) => {
     const cue = ballsRef.current[0];
-    if (Math.hypot(p.x - cue.x, p.y - cue.y) < 2) return;
-    aimRef.current = Math.atan2(p.y - cue.y, p.x - cue.x);
+    const dx = cue.x - p.x;
+    const dy = cue.y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1) return;
+    aimRef.current = Math.atan2(dy, dx);
+    powerRef.current = Math.max(0, Math.min(1, (d - PULL_MIN) / (PULL_MAX - PULL_MIN)));
     sendAim(aimRef.current);
   };
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -381,7 +377,7 @@ export function Pool8Game({
       return;
     }
     dragRef.current = "aim";
-    aimAt(p);
+    pullTo(p);
   };
   const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canAct) return;
@@ -398,16 +394,21 @@ export function Pool8Game({
           net.send({ t: "place", x: p.x, y: p.y });
         }
       }
-    } else if (dragRef.current === "aim" || e.pointerType === "mouse") {
-      aimAt(p);
+    } else if (dragRef.current === "aim") {
+      pullTo(p);
     }
   };
   const onUp = () => {
-    if (dragRef.current === "cue") {
+    const mode = dragRef.current;
+    dragRef.current = null;
+    if (mode === "cue") {
       const c = ballsRef.current[0];
       net?.send({ t: "place", x: c.x, y: c.y });
+    } else if (mode === "aim") {
+      // Soltou perto da branca: desiste da tacada.
+      if (powerRef.current > 0) shoot();
+      powerRef.current = 0;
     }
-    dragRef.current = null;
   };
 
   const restart = () => {
@@ -490,33 +491,10 @@ export function Pool8Game({
           </div>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex min-w-[180px] flex-1 items-center gap-2 text-xs text-[var(--muted)]">
-          Força
-          <input
-            type="range"
-            min={0.05}
-            max={1}
-            step={0.01}
-            value={power}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              powerRef.current = v;
-              setPower(v);
-            }}
-            className="flex-1 accent-[var(--amber)]"
-            aria-label="Força da tacada"
-          />
-          <span className="w-9 tabular-nums text-white">{Math.round(power * 100)}%</span>
-        </label>
-        <button type="button" onClick={shoot} disabled={!canAct || (ui.turn !== me && !solo)} className="btn-primary h-10 px-5 text-sm">
-          <Target size={16} /> Tacar
-        </button>
-      </div>
       <p className="min-h-5 text-sm text-white">{ui.msg && ui.winner === null ? <span className="text-[#ffcf8a]">{ui.msg} </span> : null}{status}</p>
       <p className="text-xs text-[var(--muted)]">
-        Mova o mouse (ou arraste o dedo) para mirar · setas giram a mira com precisão · espaço ou “Tacar” para bater. Linha
-        amarela: para onde a bola atingida vai.
+        Clique perto da bola branca e puxe para trás: quanto mais longe, mais forte. Solte para tacar (soltar em cima da
+        branca cancela). Linha amarela: para onde a bola atingida vai.
       </p>
     </div>
   );
