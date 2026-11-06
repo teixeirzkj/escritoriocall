@@ -25,6 +25,8 @@ export interface RemoteView {
   near: boolean;
   /** Emoji(s) antes do nome: status e mão levantada. */
   badge: string;
+  /** O que está na mão (café, água...). */
+  item: string | null;
   /** Timestamp da última atualização de posição (ms). */
   updatedAt: number;
 }
@@ -40,6 +42,7 @@ export interface LocalView {
   mic: boolean;
   speaking: boolean;
   badge: string;
+  item: string | null;
 }
 
 export type DeskHandler = (desk: { index: number; x: number; y: number; dir: Dir }) => void;
@@ -94,11 +97,22 @@ export class GameBridge {
       mic: false,
       speaking: false,
       badge: "",
+      item: null,
     };
   }
 
   setLocalBadge(b: string) {
     this.local.badge = b;
+  }
+  /** Placas e banners das salas (nome + identidade visual). */
+  roomDecor: { zoneKey: string; name: string; theme: string | null }[] = [];
+  roomDecorVersion = 0;
+  setRoomDecor(list: { zoneKey: string; name: string; theme: string | null }[]) {
+    this.roomDecor = list;
+    this.roomDecorVersion++;
+  }
+  setLocalItem(item: string | null) {
+    this.local.item = item;
   }
   pushJump(id: string) {
     this.jumps.push(id);
@@ -133,6 +147,7 @@ export class GameBridge {
         inMeeting: false,
         near: false,
         badge: "",
+        item: null,
         updatedAt: 0,
         ...patch,
       });

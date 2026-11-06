@@ -72,6 +72,17 @@ export const ZONES: Zone[] = [
 ];
 
 export const MEETING_ZONES = ZONES.filter((z) => z.kind === "meeting");
+
+/**
+ * Onde fica a placa com o nome da sala (na parede do corredor, ao lado da porta) e o
+ * banner com a logo (dentro da sala), em tiles. A placa é centralizada em `plate`.
+ */
+export const ROOM_DECOR: Record<string, { plate: { x: number; y: number }; banner: { x: number; y: number } }> = {
+  "sala-principal": { plate: { x: 10.5, y: 9.45 }, banner: { x: 1.25, y: 2.7 } },
+  "sala-01": { plate: { x: 22.5, y: 9.45 }, banner: { x: 15.2, y: 2.7 } },
+  "sala-02": { plate: { x: 32.5, y: 9.45 }, banner: { x: 25.2, y: 2.7 } },
+  "sala-03": { plate: { x: 28.6, y: 12.45 }, banner: { x: 27.2, y: 15.2 } },
+};
 export const MEETING_ZONE_KEYS = MEETING_ZONES.map((z) => z.key);
 
 /** Ponto de nascimento (pés do personagem), em px. */
@@ -330,7 +341,6 @@ export const ITEMS: MapItem[] = [
   { type: "painting", x: 4, y: 9, v: 0 },
   { type: "painting", x: 12, y: 9, v: 1 },
   { type: "clock", x: 24, y: 9 },
-  { type: "painting", x: 33, y: 9, v: 2 },
   { type: "plantSmall", x: 1, y: 9.8 },
   { type: "plantSmall", x: 34, y: 9.8 },
   { type: "speaker", x: 15.6, y: 8.9 },

@@ -18,6 +18,8 @@ Escritório 2D em pixel art onde a equipe anda, se esbarra e conversa por **voz 
 - Jogos de verdade nas mesas: pingue-pongue e totó para 2 pessoas em tempo real (ou contra o computador), **sinuca 8 ball** para 2 pessoas (lisas × listradas, faltas, bola na mão, 30 s por tacada, puxar o taco ou segurar o espaço para dar força e linhas de mira da branca e da bola atingida) e fliperama com recorde.
 - Piscina: dá para nadar e pular da borda (barra de espaço).
 - Mesa fixa: cada pessoa escolhe a sua e passa a começar o dia sentada nela.
+- Placa com o nome de cada sala na parede do corredor e identidade visual por sala (cores e banner com a logo).
+- O que a pessoa pega (café, água, lanche) aparece na mão do personagem.
 
 **Áudio e vídeo**
 - Proximidade com raio configurável (modos *fade* e *cutoff*); paredes das salas isolam o som.

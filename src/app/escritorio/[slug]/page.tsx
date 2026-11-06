@@ -51,6 +51,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     isPrivate: r.is_private,
     canAccess: manager || !r.is_private || invited.has(r.id),
     lockedBy: ((r as unknown as { locked_by?: string | null }).locked_by ?? null) || null,
+    theme: ((r as unknown as { theme?: string | null }).theme ?? null) || null,
   }));
 
   // Mesas fixas (nome de quem é dono de cada mesa). Lido com a chave do servidor:

@@ -2,6 +2,7 @@ import * as Phaser from "phaser";
 import { avatarKey, type AvatarConfig } from "@/lib/avatar";
 import { CHAR_H, CHAR_W, DIRS, drawCharacterSheet, frameRect, type Dir } from "./art/characters";
 import { drawBackground, drawItemCanvas, itemTextureKey, spriteItems } from "./art/environment";
+import { isRoomTheme, PLAIN_PLATE, ROOM_THEMES } from "@/lib/brand";
 import type { GameBridge } from "./bridge";
 import {
   buildCollisionGrid,
@@ -11,6 +12,7 @@ import {
   ITEM_DEFS,
   moveWithCollision,
   nearestFree,
+  ROOM_DECOR,
   TILE,
   WORLD_H,
   WORLD_W,
@@ -31,6 +33,10 @@ interface Avatar {
   label: Phaser.GameObjects.Text;
   mic: Phaser.GameObjects.Graphics;
   ring: Phaser.GameObjects.Graphics;
+  /** Item na mão (emoji). */
+  held: Phaser.GameObjects.Text;
+  heldItem: string | null;
+  heldDir: Dir | null;
   texKey: string;
   name: string;
   micOn: boolean;
@@ -59,6 +65,9 @@ export class OfficeScene extends Phaser.Scene {
   private panning: { x: number; y: number } | null = null;
   private deskLabels: Phaser.GameObjects.Text[] = [];
   private deskVersion = -1;
+  private decorVersion = -1;
+  private decorObjs: Phaser.GameObjects.GameObject[] = [];
+  private logoFailed = new Set<string>();
 
   constructor() {
     super("office");
@@ -305,7 +314,8 @@ export class OfficeScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 1);
     const mic = this.add.graphics();
-    const container = this.add.container(x, y, [ring, sprite]);
+    const held = this.add.text(0, 0, "", { font: "13px sans-serif", resolution: 3 }).setOrigin(0.5, 0.5).setVisible(false);
+    const container = this.add.container(x, y, [ring, sprite, held]);
     container.setDepth(y);
     // Nome e microfone ficam numa camada acima de tudo.
     const tag = this.add.container(x, y, [label, mic]).setDepth(LABEL_DEPTH + (isMe ? 1 : 0));
@@ -316,6 +326,9 @@ export class OfficeScene extends Phaser.Scene {
       label,
       mic,
       ring,
+      held,
+      heldItem: null,
+      heldDir: null,
       texKey,
       name,
       micOn: false,
@@ -400,6 +413,25 @@ export class OfficeScene extends Phaser.Scene {
     a.walking = moving;
   }
 
+  /** Item na mão: do lado em que o boneco olha (de costas, fica atrás do corpo). */
+  private updateHeld(a: Avatar, item: string | null) {
+    if (item === a.heldItem && a.dir === a.heldDir) return;
+    a.heldItem = item;
+    a.heldDir = a.dir;
+    if (!item) {
+      a.held.setVisible(false);
+      return;
+    }
+    a.held.setText(item).setVisible(true);
+    const pos: Record<Dir, [number, number]> = { down: [10, -16], up: [-10, -18], left: [-10, -16], right: [10, -16] };
+    const [hx, hy] = pos[a.dir];
+    a.held.setPosition(hx, hy);
+    // De costas o item fica atrás do corpo; nas outras direções, na frente.
+    const c = a.container;
+    c.remove(a.held);
+    c.addAt(a.held, a.dir === "up" ? c.getIndex(a.sprite) : c.getIndex(a.sprite) + 1);
+  }
+
   private refreshAvatar(a: Avatar, name: string, avatar: AvatarConfig) {
     const key = `char:${avatarKey(avatar)}`;
     if (key !== a.texKey) {
@@ -428,6 +460,7 @@ export class OfficeScene extends Phaser.Scene {
     // Barra de espaço: pular (na beira da piscina, mergulha).
     if (this.keys && Phaser.Input.Keyboard.JustDown(this.keys.SPACE) && this.canUseKeys()) this.jumpLocal();
     if (this.deskVersion !== this.bridge.deskVersion) this.drawDeskLabels();
+    if (this.decorVersion !== this.bridge.roomDecorVersion) this.drawRoomDecor();
 
     // Raio de proximidade
     const g = this.radiusGfx;
@@ -497,6 +530,7 @@ export class OfficeScene extends Phaser.Scene {
 
     // Nome/avatar/mic do jogador local podem mudar pela UI.
     this.refreshAvatar(this.me, withBadge(L.name, L.badge), L.avatar);
+    this.updateHeld(this.me, L.item);
     if (this.me.micOn !== L.mic || this.me.speaking !== L.speaking) {
       this.me.micOn = L.mic;
       this.me.speaking = L.speaking;
@@ -542,6 +576,7 @@ export class OfficeScene extends Phaser.Scene {
         this.others.set(r.id, a);
       }
       this.refreshAvatar(a, withBadge(r.name, r.badge), r.avatar);
+      this.updateHeld(a, r.item);
       const c = a.container;
       const dx = r.tx - c.x;
       const dy = r.ty - c.y;
@@ -736,6 +771,81 @@ export class OfficeScene extends Phaser.Scene {
         .setDepth(d.y + 200);
       this.deskLabels.push(t);
     });
+  }
+
+  /**
+   * Placa com o nome de cada sala (na parede do corredor, ao lado da porta) e, nas salas
+   * com identidade visual, um banner em pé com a logo.
+   */
+  private drawRoomDecor() {
+    this.decorVersion = this.bridge.roomDecorVersion;
+    for (const o of this.decorObjs) o.destroy();
+    this.decorObjs = [];
+    const toLoad = new Map<string, string>();
+
+    for (const r of this.bridge.roomDecor) {
+      const spot = ROOM_DECOR[r.zoneKey];
+      if (!spot) continue;
+      const theme = isRoomTheme(r.theme) ? ROOM_THEMES[r.theme] : null;
+      const pal = theme ?? PLAIN_PLATE;
+
+      // Placa
+      const px = spot.plate.x * TILE;
+      const py = spot.plate.y * TILE;
+      const maxW = TILE * 3;
+      const text = this.add
+        .text(px, py, r.name, { font: '700 9px "Inter", system-ui, sans-serif', color: pal.fg, resolution: 3 })
+        .setOrigin(0.5, 0.5);
+      if (text.width + 14 > maxW) text.setScale((maxW - 14) / text.width);
+      const w = Math.min(maxW, text.width * text.scaleX + 14);
+      const h = 15;
+      const g = this.add.graphics();
+      g.fillStyle(0x000000, 0.3).fillRoundedRect(px - w / 2 + 1, py - h / 2 + 2, w, h, 3);
+      g.fillStyle(pal.bg, 1).fillRoundedRect(px - w / 2, py - h / 2, w, h, 3);
+      g.fillStyle(pal.accent, 1).fillRect(px - w / 2 + 4, py + h / 2 - 3, w - 8, 1.5);
+      g.setDepth(py + 1);
+      text.setDepth(py + 2);
+      this.decorObjs.push(g, text);
+
+      // Banner com a logo
+      if (!theme || !r.theme) continue;
+      const key = `marca:${r.theme}`;
+      if (!this.textures.exists(key)) {
+        if (!this.logoFailed.has(key)) toLoad.set(key, theme.logo);
+        continue;
+      }
+      const BW = 54;
+      const BH = 66;
+      const bx = spot.banner.x * TILE;
+      const by = spot.banner.y * TILE;
+      const b = this.add.graphics();
+      b.fillStyle(0x000000, 0.25).fillEllipse(bx + BW / 2, by + BH, BW + 6, 8);
+      b.fillStyle(0x3a3f4b, 1).fillRoundedRect(bx, by + BH - 6, BW, 6, 2);
+      b.fillStyle(0xffffff, 1).fillRect(bx + 3, by, BW - 6, BH - 6);
+      b.fillStyle(theme.bg, 1).fillRect(bx + 3, by, BW - 6, 7);
+      b.fillStyle(theme.bg, 1).fillRect(bx + 3, by + BH - 16, BW - 6, 10);
+      b.fillStyle(theme.accent, 1).fillRect(bx + 3, by + 7, BW - 6, 1.5);
+      b.lineStyle(1, 0x000000, 0.25).strokeRect(bx + 3, by, BW - 6, BH - 6);
+      b.setDepth(by + BH);
+      const logo = this.add.image(bx + BW / 2, by + 7 + (BH - 6 - 7 - 10) / 2, key);
+      const fit = Math.min((BW - 12) / logo.width, (BH - 30) / logo.height);
+      logo.setScale(fit).setDepth(by + BH + 0.5);
+      this.decorObjs.push(b, logo);
+    }
+
+    if (toLoad.size) {
+      for (const [key, url] of toLoad) this.load.image(key, url);
+      this.load.once("loaderror", (f: { key: string }) => this.logoFailed.add(f.key));
+      this.load.once("complete", () => {
+        for (const key of toLoad.keys()) {
+          // Logos são fotos: filtro suave (o resto do jogo é pixel art).
+          if (this.textures.exists(key)) this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+          else this.logoFailed.add(key);
+        }
+        this.decorVersion = -1;
+      });
+      this.load.start();
+    }
   }
 
   /** Re-aplica a visibilidade dos nomes (configuração). */

@@ -373,7 +373,8 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
   // Estado local -> presença
   useEffect(() => {
     bridge.setLocalMic(media.mic);
-    bridge.setLocalBadge(badgeOf({ status, hand, item: held }));
+    bridge.setLocalBadge(badgeOf({ status, hand }));
+    bridge.setLocalItem(held);
     updatePresence({
       mic: media.mic,
       cam: media.cam,
@@ -409,6 +410,11 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
     const t = window.setTimeout(() => setHand(false), 0);
     return () => window.clearTimeout(t);
   }, [meetingId]);
+
+  // Placas com o nome e banners com a logo das salas.
+  useEffect(() => {
+    bridge.setRoomDecor(rooms.map((r) => ({ zoneKey: r.zoneKey, name: r.name, theme: r.theme })));
+  }, [bridge, rooms]);
 
   // Nomes nas mesas fixas.
   useEffect(() => {

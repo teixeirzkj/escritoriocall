@@ -20,6 +20,7 @@ import { Labeled, OfficeFields } from "@/components/admin/OfficeFields";
 import { isOfficeManager, requireUser } from "@/lib/auth";
 import { integrationStatus } from "@/lib/env";
 import { MEETING_ZONES, zoneByKey } from "@/lib/game/map";
+import { ROOM_THEMES, ROOM_THEME_KEYS } from "@/lib/brand";
 import { presenceMembers } from "@/lib/realtime/ably-server";
 import { ch, type PresenceData } from "@/lib/realtime/channels";
 import type { Office, OfficeMember, Room } from "@/lib/types";
@@ -204,6 +205,14 @@ export default async function Page({
                       <input name="capacity" type="number" min={1} max={50} defaultValue={r.capacity} required className="input h-10 text-sm" />
                     </Labeled>
                   </div>
+                  <Labeled label="Identidade visual (placa na porta e banner com a logo)">
+                    <select name="theme" defaultValue={(r as unknown as { theme?: string | null }).theme ?? ""} className="input h-10 text-sm">
+                      <option value="">Nenhuma (só a placa com o nome)</option>
+                      {ROOM_THEME_KEYS.map((k) => (
+                        <option key={k} value={k}>{ROOM_THEMES[k].label}</option>
+                      ))}
+                    </select>
+                  </Labeled>
                   <label className="flex items-center gap-2 text-sm text-white">
                     <input type="checkbox" name="is_private" defaultChecked={r.is_private} className="h-4 w-4 accent-[var(--amber)]" />
                     <Lock size={13} /> Privada (só pessoas convidadas e gestores entram)
@@ -276,6 +285,14 @@ export default async function Page({
                   <input name="capacity" type="number" min={1} max={50} defaultValue={freeZones[0]?.defaultCapacity ?? 6} required className="input h-10 text-sm" />
                 </Labeled>
               </div>
+              <Labeled label="Identidade visual">
+                <select name="theme" defaultValue="" className="input h-10 text-sm">
+                  <option value="">Nenhuma (só a placa com o nome)</option>
+                  {ROOM_THEME_KEYS.map((k) => (
+                    <option key={k} value={k}>{ROOM_THEMES[k].label}</option>
+                  ))}
+                </select>
+              </Labeled>
               <label className="flex items-center gap-2 text-sm text-white">
                 <input type="checkbox" name="is_private" className="h-4 w-4 accent-[var(--amber)]" /> Privada
               </label>

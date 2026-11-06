@@ -77,10 +77,10 @@ interface Options {
   onBoard?: (fromId: string, data: BoardMsg) => void;
 }
 
-/** Emoji(s) antes do nome no mapa: status (se não for "disponível") e mão levantada. */
-export function badgeOf(d: { status?: string; hand?: boolean; item?: string | null }): string {
+/** Emoji(s) antes do nome no mapa: status (se não for "disponível") e mão levantada. O item vai na mão do boneco. */
+export function badgeOf(d: { status?: string; hand?: boolean }): string {
   const st = d.status && d.status !== "disponivel" ? statusInfo(d.status).emoji : "";
-  return `${d.hand ? "✋" : ""}${st}${d.item ?? ""}`;
+  return `${d.hand ? "✋" : ""}${st}`;
 }
 
 const MOVE_INTERVAL_MS = 100; // no máximo 10 atualizações/s, e só quando há mudança
@@ -123,6 +123,7 @@ export function useOfficeRealtime(opts: Options) {
         mic: Boolean(data.mic),
         inMeeting: Boolean(data.roomId),
         badge: badgeOf(data),
+        item: typeof data.item === "string" && data.item ? data.item.slice(0, 8) : null,
       });
       const stale = !existing || Date.now() - existing.updatedAt > 1500;
       if ((positionFromPresence || stale) && Number.isFinite(data.x) && Number.isFinite(data.y)) {

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { assertAdmin, assertOfficeManager, assertUser, getProfile, HttpError } from "@/lib/auth";
 import { MissingEnvError, serverLiveKit } from "@/lib/env";
 import { MEETING_ZONE_KEYS, MEETING_ZONES } from "@/lib/game/map";
+import { ROOM_THEME_KEYS } from "@/lib/brand";
 import { publishServer } from "@/lib/realtime/ably-server";
 import { ch, lk, type ControlMsg } from "@/lib/realtime/channels";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -162,13 +163,17 @@ const roomSchema = z.object({
   name: z.string().trim().min(2, "Nome muito curto").max(60),
   capacity: z.coerce.number().int().min(1, "Capacidade mínima: 1").max(50, "Capacidade máxima: 50"),
   is_private: bool,
+  theme: z
+    .string()
+    .optional()
+    .transform((v) => (v && (ROOM_THEME_KEYS as string[]).includes(v) ? v : null)),
 });
 
 export async function saveRoom(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
     const data = roomSchema.parse(Object.fromEntries(fd));
     const { supabase } = await assertOfficeManager(data.officeId);
-    const row = { zone_key: data.zone_key, name: data.name, capacity: data.capacity, is_private: data.is_private };
+    const row = { zone_key: data.zone_key, name: data.name, capacity: data.capacity, is_private: data.is_private, theme: data.theme };
     const { error } = data.roomId
       ? await supabase.from("rooms").update(row).eq("id", data.roomId).eq("office_id", data.officeId)
       : await supabase.from("rooms").insert({ ...row, office_id: data.officeId });

@@ -90,4 +90,6 @@ export interface RoomInfo {
   canAccess: boolean;
   /** Sala trancada por esta pessoa (id), ou null. */
   lockedBy: string | null;
+  /** Identidade visual (placa e banner com logo). */
+  theme: string | null;
 }
