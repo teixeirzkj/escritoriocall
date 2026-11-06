@@ -333,6 +333,8 @@ export const ITEMS: MapItem[] = [
   { type: "painting", x: 33, y: 9, v: 2 },
   { type: "plantSmall", x: 1, y: 9.8 },
   { type: "plantSmall", x: 34, y: 9.8 },
+  { type: "speaker", x: 15.6, y: 8.9 },
+  { type: "speaker", x: 26.6, y: 8.9 },
 
   // ---------- Área de trabalho ----------
   ...deskCluster(2, 15, 3, 0),
@@ -378,6 +380,7 @@ export const ITEMS: MapItem[] = [
   { type: "poolTable", x: 39.5, y: 12.9 },
   { type: "foosball", x: 45, y: 13.1 },
   { type: "pingPong", x: 39.5, y: 17.4 },
+  { type: "speaker", x: 46.9, y: 11.2 },
   { type: "arcade", x: 49, y: 11.6 },
   { type: "arcade", x: 49, y: 13.8 },
   { type: "beanBag", x: 45, y: 18.6, v: 1 },

@@ -4,6 +4,11 @@
  */
 
 /** Uma música (atual ou na fila). */
+/** Áreas do mapa (fora das salas) que têm caixa de som: só quem está na área ouve. */
+export const MUSIC_ZONES = ["corredor", "lazer"] as const;
+export type MusicZone = (typeof MUSIC_ZONES)[number];
+export const isMusicZone = (z: string | null | undefined): z is MusicZone => (MUSIC_ZONES as readonly string[]).includes(z ?? "");
+
 export interface MusicItem {
   url: string;
   kind: "youtube" | "audio";

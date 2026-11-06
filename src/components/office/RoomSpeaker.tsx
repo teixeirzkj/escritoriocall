@@ -29,14 +29,20 @@ export interface MusicSnapshot extends MusicEvent {
 
 interface Props {
   officeId: string;
-  roomId: string;
+  /** Caixa de uma sala... */
+  roomId?: string;
+  /** ...ou de uma área do mapa (corredor, lazer). */
+  zone?: string;
+  /** "map": no celular fica no alto, longe do joystick. */
+  placement?: "meeting" | "map";
   roomName: string;
   music: MusicSnapshot | null;
   onError: (msg: string) => void;
 }
 
 /** Caixa de som da sala: cola um link e toca em sincronia para todos da reunião. */
-export function RoomSpeaker({ officeId, roomId, roomName, music, onError }: Props) {
+export function RoomSpeaker({ officeId, roomId, zone, placement = "meeting", roomName, music, onError }: Props) {
+  const target = roomId ? { roomId } : { zone };
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -66,7 +72,7 @@ export function RoomSpeaker({ officeId, roomId, roomName, music, onError }: Prop
       void fetch("/api/music", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ officeId, roomId, action: "ended", startedAt: s.startedAt }),
+        body: JSON.stringify({ officeId, ...target, action: "ended", startedAt: s.startedAt }),
       }).catch(() => {});
     };
     let onMessage: ((e: MessageEvent) => void) | null = null;
@@ -155,7 +161,7 @@ export function RoomSpeaker({ officeId, roomId, roomName, music, onError }: Prop
       const r = await fetch("/api/music", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ officeId, roomId, ...body }),
+        body: JSON.stringify({ officeId, ...target, ...body }),
       });
       if (!r.ok) {
         const j = (await r.json().catch(() => ({}))) as { error?: string };
@@ -174,7 +180,9 @@ export function RoomSpeaker({ officeId, roomId, roomName, music, onError }: Prop
   const VolIcon = volume === 0 ? VolumeX : volume < 50 ? Volume1 : Volume2;
 
   return (
-    <div className="pointer-events-none fixed bottom-[88px] left-3 z-[38] sm:bottom-28">
+    <div
+      className={`pointer-events-none fixed left-3 z-[38] ${placement === "map" ? "left-2 top-[68px] sm:left-3 sm:top-auto sm:bottom-28" : "bottom-[88px] sm:bottom-28"}`}
+    >
       <div
         className={`pointer-events-auto overflow-hidden rounded-2xl border bg-[var(--panel)]/95 shadow-2xl backdrop-blur transition-all ${open ? "w-[min(340px,calc(100vw-24px))] border-white/10" : "w-auto border-[var(--line)]"}`}
       >
@@ -189,7 +197,7 @@ export function RoomSpeaker({ officeId, roomId, roomName, music, onError }: Prop
             <Speaker size={17} className={playing ? "animate-pulse" : undefined} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block font-semibold">Caixa de som</span>
+            <span className="block font-semibold">Caixa de som{zone ? ` · ${roomName}` : ""}</span>
             <span className="block max-w-56 truncate text-xs text-[var(--muted)]">
               {state ? `${state.paused ? "Pausado" : "Tocando"}: ${state.title || state.url}` : "Nada tocando"}
             </span>
@@ -219,7 +227,7 @@ export function RoomSpeaker({ officeId, roomId, roomName, music, onError }: Prop
                   </a>
                 </div>
                 <div className="mt-1 text-[var(--muted)]">
-                  {state.paused ? "Pausado" : "Tocando"} por {state.by} · todos da {roomName} ouvem
+                  {state.paused ? "Pausado" : "Tocando"} por {state.by} · {zone ? `todos em ${roomName} ouvem` : `todos da ${roomName} ouvem`}
                 </div>
                 <div className="mt-2 flex gap-2">
                   {state.paused ? (

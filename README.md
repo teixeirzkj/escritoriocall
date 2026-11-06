@@ -27,6 +27,7 @@ Escritório 2D em pixel art onde a equipe anda, se esbarra e conversa por **voz 
 - Sala trancada: quem chega **bate na porta** e alguém de dentro abre.
 - Fundo da câmera: desfoque, imagens prontas ou imagem própria.
 - Caixa de som por sala: cole um link do YouTube e todos da reunião ouvem em sincronia, com fila e repetição.
+- Caixas de som também no corredor e na área de lazer: só quem está na área ouve.
 
 **Agenda das salas**
 - Reserve uma sala com nome, dia, horário, duração e convidados; horários que se sobrepõem são bloqueados.
@@ -87,7 +88,7 @@ Toda a arte (personagens, pisos e móveis) é desenhada por código em `src/lib/
 
 ## Banco de dados
 
-Tabelas: `profiles`, `avatars`, `offices`, `office_members` (com mesa fixa), `rooms` (com caixa de som e tranca), `room_members`, `room_bookings`, `messages`, `user_settings` e `media_usage`.
+Tabelas: `profiles`, `avatars`, `offices`, `office_members` (com mesa fixa), `rooms` (com caixa de som e tranca), `room_members`, `room_bookings`, `zone_music`, `messages`, `user_settings` e `media_usage`.
 
 - RLS em todas as tabelas, com regras centralizadas em funções (`is_admin`, `is_office_member`, `can_access_room`...).
 - O usuário não consegue alterar o próprio papel.

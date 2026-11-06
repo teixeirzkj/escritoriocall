@@ -7,6 +7,7 @@ import {
   type MusicEvent,
   type MusicItem,
   type MusicState,
+  MUSIC_ZONES,
   musicPositionMs,
   parseMusicUrl,
 } from "@/lib/music";
@@ -19,7 +20,42 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 export const dynamic = "force-dynamic";
 
 const MAX_QUEUE = 30;
-const ids = z.object({ officeId: z.uuid(), roomId: z.uuid() });
+// Caixa de uma sala (roomId) ou de uma área do mapa (zone: corredor, lazer).
+const ids = z
+  .object({ officeId: z.uuid(), roomId: z.uuid().optional(), zone: z.enum(MUSIC_ZONES).optional() })
+  .refine((v) => Boolean(v.roomId) !== Boolean(v.zone), "Informe a sala ou a área");
+
+type Target = { officeId: string; roomId?: string; zone?: string };
+
+/** Lê a música atual do alvo (já validado o acesso). */
+async function readMusic(sb: Parameters<typeof assertRoomAccess>[0], t: Target): Promise<unknown> {
+  if (t.roomId) {
+    const room = await assertRoomAccess(sb, t.officeId, t.roomId);
+    return (room as unknown as { music?: unknown }).music;
+  }
+  const { data } = await supabaseAdmin()
+    .from("zone_music")
+    .select("music")
+    .eq("office_id", t.officeId)
+    .eq("zone_key", t.zone!)
+    .maybeSingle();
+  return data?.music ?? null;
+}
+
+async function saveMusic(t: Target, next: MusicState | null) {
+  const admin = supabaseAdmin();
+  const { error } = t.roomId
+    ? await admin.from("rooms").update({ music: next }).eq("id", t.roomId)
+    : await admin
+        .from("zone_music")
+        .upsert({ office_id: t.officeId, zone_key: t.zone!, music: next, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+async function publishMusic(t: Target, event: MusicEvent) {
+  if (t.roomId) await publishServer(ch.room(t.officeId, t.roomId), "music", event);
+  else await publishServer(ch.office(t.officeId), "zone-music", { ...event, zone: t.zone });
+}
 
 function asState(v: unknown): MusicState | null {
   if (!v || typeof v !== "object") return null;
@@ -33,11 +69,11 @@ export async function GET(req: NextRequest) {
     const { user, supabase } = await assertUser();
     const input = ids.parse({
       officeId: req.nextUrl.searchParams.get("officeId") ?? undefined,
-      roomId: req.nextUrl.searchParams.get("roomId") ?? undefined,
+      roomId: req.nextUrl.searchParams.get("roomId") || undefined,
+      zone: req.nextUrl.searchParams.get("zone") || undefined,
     });
     await assertOfficeMember(supabase, input.officeId, user.id);
-    const room = await assertRoomAccess(supabase, input.officeId, input.roomId);
-    const body: MusicEvent = { state: asState((room as unknown as { music?: unknown }).music), serverNow: Date.now() };
+    const body: MusicEvent = { state: asState(await readMusic(supabase, input)), serverNow: Date.now() };
     return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return handleRouteError(e);
@@ -114,8 +150,7 @@ export async function POST(req: NextRequest) {
 
     const input = action.parse(await req.json());
     await assertOfficeMember(supabase, input.officeId, user.id);
-    const room = await assertRoomAccess(supabase, input.officeId, input.roomId);
-    const current = asState((room as unknown as { music?: unknown }).music);
+    const current = asState(await readMusic(supabase, input));
 
     const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle();
     const by = (profile?.display_name as string | undefined) ?? "Alguém";
@@ -139,7 +174,7 @@ export async function POST(req: NextRequest) {
         next = null;
         break;
       case "next":
-        if (!current) throw new HttpError(409, "Nada tocando nesta sala");
+        if (!current) throw new HttpError(409, "Nada tocando aqui");
         next = advance({ ...current, loop: current.loop === "one" ? "off" : current.loop }, now);
         if (next && current.loop === "one") next.loop = "one";
         break;
@@ -150,30 +185,29 @@ export async function POST(req: NextRequest) {
         next = advance(current, now);
         break;
       case "remove": {
-        if (!current) throw new HttpError(409, "Nada tocando nesta sala");
+        if (!current) throw new HttpError(409, "Nada tocando aqui");
         const queue = [...(current.queue ?? [])];
         queue.splice(input.index, 1);
         next = { ...current, queue };
         break;
       }
       case "loop":
-        if (!current) throw new HttpError(409, "Nada tocando nesta sala");
+        if (!current) throw new HttpError(409, "Nada tocando aqui");
         next = { ...current, loop: input.mode };
         break;
       case "pause":
-        if (!current) throw new HttpError(409, "Nada tocando nesta sala");
+        if (!current) throw new HttpError(409, "Nada tocando aqui");
         if (!current.paused) next = { ...current, offsetMs: musicPositionMs(current, now), paused: true, startedAt: now, by };
         break;
       case "resume":
-        if (!current) throw new HttpError(409, "Nada tocando nesta sala");
+        if (!current) throw new HttpError(409, "Nada tocando aqui");
         if (current.paused) next = { ...current, startedAt: now, paused: false, by };
         break;
     }
 
-    const { error } = await supabaseAdmin().from("rooms").update({ music: next }).eq("id", input.roomId);
-    if (error) throw error;
+    await saveMusic(input, next);
     const event: MusicEvent = { state: next, serverNow: Date.now() };
-    await publishServer(ch.room(input.officeId, input.roomId), "music", event);
+    await publishMusic(input, event);
     return NextResponse.json(event, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return handleRouteError(e);

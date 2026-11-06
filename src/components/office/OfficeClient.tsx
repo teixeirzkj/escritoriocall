@@ -10,7 +10,7 @@ import type { GameHandle } from "@/lib/game/createGame";
 import { DESK_SEATS, freeSeat, SPAWN, TILE, zoneByKey, type Seat } from "@/lib/game/map";
 import { computeProximity, type ProximityMode } from "@/lib/game/proximity";
 import { useMedia } from "@/lib/media/useMedia";
-import type { MusicEvent } from "@/lib/music";
+import { isMusicZone, type MusicEvent } from "@/lib/music";
 import { playChime } from "@/lib/sounds";
 import type { ControlMsg, KnockAnswerMsg, KnockMsg, ReactionMsg, RingMsg } from "@/lib/realtime/channels";
 import { badgeOf, useOfficeRealtime } from "@/lib/realtime/useOfficeRealtime";
@@ -120,6 +120,15 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
     },
     [office.id, onMusic],
   );
+  // Caixas de som do corredor e da área de lazer (uma música por área).
+  const [zoneMusic, setZoneMusic] = useState<Record<string, MusicSnapshot>>({});
+  const zoneSeenRef = useRef<Record<string, number>>({});
+  const onZoneMusic = useCallback((zone: string, e: MusicEvent) => {
+    if (!e || typeof e.serverNow !== "number") return;
+    if (e.serverNow < (zoneSeenRef.current[zone] ?? 0)) return;
+    zoneSeenRef.current[zone] = e.serverNow;
+    setZoneMusic((m) => ({ ...m, [zone]: { ...e, skew: e.serverNow - Date.now() } }));
+  }, []);
   const [nearIds, setNearIds] = useState<string[]>([]);
   const [speakers, setSpeakers] = useState<Set<string>>(new Set());
   const [zoom, setZoom] = useState(1);
@@ -267,6 +276,7 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
     onControl,
     onPeerJoin,
     onMusic,
+    onZoneMusic,
     onRoomReady: loadMusic,
     onReaction,
     onRing,
@@ -751,6 +761,18 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
       },
     };
   }, [meetingId, boardSend, me.id]);
+
+  // Área com caixa de som (fora das reuniões): busca o que está tocando ao entrar.
+  const musicZone = !meetingId && isMusicZone(zoneKey) ? zoneKey : null;
+  useEffect(() => {
+    if (!musicZone) return;
+    void fetch(`/api/music?officeId=${office.id}&zone=${musicZone}`)
+      .then((r) => (r.ok ? (r.json() as Promise<MusicEvent>) : null))
+      .then((e) => {
+        if (e) onZoneMusic(musicZone, e);
+      })
+      .catch(() => {});
+  }, [musicZone, office.id, onZoneMusic]);
 
   // Aviso (som + notificação) quando alguém entra na sala em que estou.
   const roomSeenRef = useRef<{ room: string | null; ids: Set<string> }>({ room: null, ids: new Set() });
@@ -1288,6 +1310,18 @@ export function OfficeClient({ office, rooms, desks, me, settings: initialSettin
           roomId={meetingRoom.id}
           roomName={meetingRoom.name}
           music={music}
+          onError={(m) => toast(m, "error")}
+        />
+      )}
+
+      {musicZone && (
+        <RoomSpeaker
+          key={`zona-${musicZone}`}
+          officeId={office.id}
+          zone={musicZone}
+          placement="map"
+          roomName={zoneByKey(musicZone)?.label ?? "Área"}
+          music={zoneMusic[musicZone] ?? null}
           onError={(m) => toast(m, "error")}
         />
       )}

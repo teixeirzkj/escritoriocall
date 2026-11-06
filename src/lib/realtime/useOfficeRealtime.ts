@@ -53,6 +53,8 @@ interface Options {
   onPeerJoin?: (id: string, name: string) => void;
   /** Caixa de som da sala atual mudou. */
   onMusic?: (e: MusicEvent) => void;
+  /** Caixa de som de uma área do mapa (corredor, lazer) mudou. */
+  onZoneMusic?: (zone: string, e: MusicEvent) => void;
   /** Canal da sala conectado (eventos a partir daqui chegam em tempo real). */
   onRoomReady?: (roomId: string) => void;
   /** Reação (emoji) de alguém — inclusive a sua. */
@@ -275,6 +277,10 @@ export function useOfficeRealtime(opts: Options) {
         });
         await channel.subscribe("game", (m) => {
           if (m.clientId && m.clientId !== myId && m.data && typeof m.data === "object") cbRef.current.onGame?.(m.clientId, m.data as GameMsg);
+        });
+        await channel.subscribe("zone-music", (m) => {
+          const d = m.data as (MusicEvent & { zone?: unknown }) | null;
+          if (d && typeof d.zone === "string") cbRef.current.onZoneMusic?.(d.zone, d);
         });
         await channel.subscribe("board", (m) => {
           if (m.clientId && m.clientId !== myId && m.data && typeof m.data === "object") cbRef.current.onBoard?.(m.clientId, m.data as BoardMsg);
