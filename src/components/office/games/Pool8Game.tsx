@@ -39,6 +39,12 @@ export interface PoolNet {
 }
 
 const clone = (balls: Ball[]) => balls.map((b) => ({ ...b }));
+/** Tempo de cada vez. */
+const TURN_MS = 30_000;
+/** Espaço: tempo para a força ir de 0 a 100%. */
+const CHARGE_MS = 1300;
+/** Resolução do desenho (2x = linhas lisas). */
+const SCALE = 2;
 
 function isWire(d: unknown): d is PoolWire {
   return Boolean(d) && typeof d === "object" && typeof (d as { t?: unknown }).t === "string";
@@ -74,8 +80,23 @@ export function Pool8Game({
   const oppAimRef = useRef<number | null>(null);
   const powerRef = useRef(0);
   const dragRef = useRef<"aim" | "cue" | null>(null);
+  /** Distância da branca no momento do clique (puxar mais longe que isso = força). */
+  const pressRef = useRef(0);
+  /** Espaço pressionado: quando começou a medir a força. */
+  const chargeRef = useRef<number | null>(null);
+  /** Mira do adversário exibida (desliza até a recebida, sem trancos). */
+  const oppShownRef = useRef<number | null>(null);
   const lastSendRef = useRef(0);
   const [ui, setUi] = useState(() => ({ ...initial, moving: false }));
+  /** Início da vez atual (cronômetro de 30 s por tacada). */
+  const [turnSince, setTurnSince] = useState(() => Date.now());
+  const turnSinceRef = useRef(turnSince);
+  const [clock, setClock] = useState(() => Date.now());
+  const restartClock = useCallback(() => {
+    const now = Date.now();
+    turnSinceRef.current = now;
+    setTurnSince(now);
+  }, []);
 
   const myTurn = ui.turn === me;
   const canAct = (myTurn || solo) && ui.winner === null && !ui.moving;
@@ -91,9 +112,11 @@ export function Pool8Game({
       simRef.current = null;
       pendingRef.current = null;
       oppAimRef.current = null;
+      oppShownRef.current = null;
+      restartClock();
       publish();
     },
-    [publish],
+    [publish, restartClock],
   );
 
   // Rede
@@ -142,12 +165,12 @@ export function Pool8Game({
     publish();
   }, [me, net, solo, publish]);
 
-  // Mira para o adversário: no máximo ~10 envios por segundo, sempre mandando a posição final.
+  // Mira para o adversário: no máximo ~20 envios por segundo, sempre mandando a posição final.
   const aimTimerRef = useRef<number | null>(null);
   const sendAim = (a: number) => {
     if (!net || solo) return;
     const now = performance.now();
-    const wait = 90 - (now - lastSendRef.current);
+    const wait = 50 - (now - lastSendRef.current);
     if (wait <= 0) {
       lastSendRef.current = now;
       net.send({ t: "aim", a });
@@ -184,6 +207,7 @@ export function Pool8Game({
         stateRef.current = st;
         ballsRef.current = clone(st.balls);
         net?.send({ t: "sync", st });
+        restartClock();
         publish();
       } else if (pendingRef.current) {
         applyState(pendingRef.current.st);
@@ -292,6 +316,8 @@ export function Pool8Game({
     };
 
     const draw = () => {
+      // Desenha em resolução dobrada: linhas e bolas lisas mesmo com a mesa ampliada.
+      ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
       ctx.fillStyle = "#4e2e19";
       ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = "#7a4a2b";
@@ -310,16 +336,17 @@ export function Pool8Game({
       const st = stateRef.current;
       if (!simRef.current && st.winner === null) {
         const mine = solo || st.turn === me;
-        if (mine && dragRef.current === "aim") {
+        if (mine && dragRef.current !== "cue") {
           drawGuide(aimRef.current, false);
-          // Barra de força
-          const pw = powerRef.current;
-          ctx.fillStyle = "rgba(0,0,0,0.45)";
-          ctx.fillRect(M + 6, H - M - 14, 124, 10);
-          ctx.fillStyle = pw > 0.8 ? "#e5484d" : pw > 0.5 ? "#f5a524" : "#7ee0a1";
-          ctx.fillRect(M + 8, H - M - 12, 120 * pw, 6);
-        }
-        else if (!mine && oppAimRef.current !== null) drawGuide(oppAimRef.current, true);
+          // Barra de força (puxando o taco ou segurando o espaço)
+          if (dragRef.current === "aim" || chargeRef.current !== null) {
+            const pw = powerRef.current;
+            ctx.fillStyle = "rgba(0,0,0,0.45)";
+            ctx.fillRect(M + 6, H - M - 14, 124, 10);
+            ctx.fillStyle = pw > 0.8 ? "#e5484d" : pw > 0.5 ? "#f5a524" : "#7ee0a1";
+            ctx.fillRect(M + 8, H - M - 12, 120 * pw, 6);
+          }
+        } else if (!mine && oppShownRef.current !== null) drawGuide(oppShownRef.current, true);
         if (mine && st.inHand) {
           const cue = ballsRef.current[0];
           ctx.strokeStyle = "rgba(255,214,90,0.9)";
@@ -332,14 +359,54 @@ export function Pool8Game({
       }
     };
 
+    /** 30 s sem tacar: perde a vez. Quem está na vez decide; se sumir, o outro assume aos 33 s. */
+    const checkClock = () => {
+      const st = stateRef.current;
+      if (solo || !net || simRef.current || st.winner !== null) return;
+      const elapsed = Date.now() - turnSinceRef.current;
+      const holder = st.turn === me;
+      if (elapsed < (holder ? TURN_MS : TURN_MS + 3000)) return;
+      dragRef.current = null;
+      chargeRef.current = null;
+      powerRef.current = 0;
+      const other = (1 - st.turn) as 0 | 1;
+      const next: PoolState = {
+        ...st,
+        balls: clone(ballsRef.current),
+        turn: other,
+        inHand: false,
+        msg: `${names[st.turn]} passou de 30 segundos e perdeu a vez.`,
+        shot: st.shot + 1,
+      };
+      applyState(next);
+      net.send({ t: "sync", st: next });
+    };
+
     const loop = (now: number) => {
       const dt = Math.min(0.03, (now - last) / 1000);
       last = now;
       const sim = simRef.current;
       if (sim) {
-        for (let i = 0; i < 6; i++) step(ballsRef.current, dt / 6, sim.log);
+        // Passos pequenos (no máx. ~1 px por passo): a bola segue a linha de mira prevista.
+        const vmax = Math.max(...ballsRef.current.map((b) => (b.in ? 0 : Math.hypot(b.vx, b.vy))));
+        const n = Math.min(80, Math.max(2, Math.ceil((vmax * dt) / 1)));
+        for (let i = 0; i < n; i++) step(ballsRef.current, dt / n, sim.log);
         finishIfStopped();
       }
+      // Espaço pressionado: a força enche e esvazia até soltar.
+      if (chargeRef.current !== null) {
+        const t = ((now - chargeRef.current) / CHARGE_MS) % 2;
+        powerRef.current = t < 1 ? t : 2 - t;
+      }
+      // Mira do adversário desliza até o ângulo recebido.
+      const target = oppAimRef.current;
+      if (target === null) oppShownRef.current = null;
+      else if (oppShownRef.current === null) oppShownRef.current = target;
+      else {
+        const d = Math.atan2(Math.sin(target - oppShownRef.current), Math.cos(target - oppShownRef.current));
+        oppShownRef.current += d * Math.min(1, dt * 14);
+      }
+      checkClock();
       // Estado do adversário chegou e a animação local demorou demais: alinha.
       if (pendingRef.current && performance.now() - pendingRef.current.at > 2500) applyState(pendingRef.current.st);
       draw();
@@ -354,19 +421,65 @@ export function Pool8Game({
     const r = e.currentTarget.getBoundingClientRect();
     return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
   };
-  /** Puxar o taco: a tacada vai na direção oposta ao arraste; quanto mais longe da branca, mais forte. */
-  const PULL_MIN = 8;
-  const PULL_MAX = 160;
-  const pullTo = (p: { x: number; y: number }) => {
+  /**
+   * O taco fica do lado do ponteiro: a tacada vai do ponteiro para a branca.
+   * Clicar e puxar para longe da branca dá força; soltar taca.
+   */
+  const PULL_RANGE = 150;
+  const aimFrom = (p: { x: number; y: number }) => {
     const cue = ballsRef.current[0];
     const dx = cue.x - p.x;
     const dy = cue.y - p.y;
     const d = Math.hypot(dx, dy);
-    if (d < 1) return;
+    if (d < 1) return d;
     aimRef.current = Math.atan2(dy, dx);
-    powerRef.current = Math.max(0, Math.min(1, (d - PULL_MIN) / (PULL_MAX - PULL_MIN)));
     sendAim(aimRef.current);
+    return d;
   };
+  const pullTo = (p: { x: number; y: number }) => {
+    const d = aimFrom(p);
+    powerRef.current = Math.max(0, Math.min(1, (d - pressRef.current) / PULL_RANGE));
+  };
+
+  // Teclado: segure o espaço para medir a força e solte para tacar; setas ajustam a mira.
+  useEffect(() => {
+    const ready = () =>
+      !simRef.current && stateRef.current.winner === null && (solo || stateRef.current.turn === me) && dragRef.current === null;
+    const typing = (e: KeyboardEvent) =>
+      e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement)?.isContentEditable;
+    const down = (e: KeyboardEvent) => {
+      if (typing(e)) return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (!e.repeat && chargeRef.current === null && ready()) chargeRef.current = performance.now();
+      } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && ready()) {
+        e.preventDefault();
+        aimRef.current += (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 0.03 : 0.004);
+        sendAim(aimRef.current);
+      }
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || chargeRef.current === null) return;
+      e.preventDefault();
+      chargeRef.current = null;
+      if (powerRef.current > 0.02 && ready()) shoot();
+      powerRef.current = 0;
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shoot, solo, me]);
+
+  // Relógio da tela (contagem regressiva).
+  useEffect(() => {
+    if (solo) return;
+    const t = window.setInterval(() => setClock(Date.now()), 250);
+    return () => window.clearInterval(t);
+  }, [solo]);
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canAct) return;
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -376,8 +489,10 @@ export function Pool8Game({
       dragRef.current = "cue";
       return;
     }
+    if (chargeRef.current !== null) return;
     dragRef.current = "aim";
-    pullTo(p);
+    pressRef.current = aimFrom(p);
+    powerRef.current = 0;
   };
   const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canAct) return;
@@ -396,6 +511,9 @@ export function Pool8Game({
       }
     } else if (dragRef.current === "aim") {
       pullTo(p);
+    } else if (e.pointerType === "mouse" && chargeRef.current === null) {
+      // Sem clicar: o taco acompanha o mouse (mira).
+      aimFrom(p);
     }
   };
   const onUp = () => {
@@ -405,8 +523,8 @@ export function Pool8Game({
       const c = ballsRef.current[0];
       net?.send({ t: "place", x: c.x, y: c.y });
     } else if (mode === "aim") {
-      // Soltou perto da branca: desiste da tacada.
-      if (powerRef.current > 0) shoot();
+      // Soltou sem puxar: desiste da tacada.
+      if (powerRef.current > 0.02) shoot();
       powerRef.current = 0;
     }
   };
@@ -449,6 +567,7 @@ export function Pool8Game({
     );
   };
 
+  const secondsLeft = Math.max(0, Math.ceil((TURN_MS - (clock - turnSince)) / 1000));
   const status = ui.winner !== null
     ? ""
     : ui.moving
@@ -470,8 +589,8 @@ export function Pool8Game({
       <div className="relative w-full">
         <canvas
           ref={canvasRef}
-          width={W}
-          height={H}
+          width={W * SCALE}
+          height={H * SCALE}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -491,10 +610,21 @@ export function Pool8Game({
           </div>
         )}
       </div>
-      <p className="min-h-5 text-sm text-white">{ui.msg && ui.winner === null ? <span className="text-[#ffcf8a]">{ui.msg} </span> : null}{status}</p>
+      <div className="flex min-h-5 items-start justify-between gap-3">
+        <p className="text-sm text-white">{ui.msg && ui.winner === null ? <span className="text-[#ffcf8a]">{ui.msg} </span> : null}{status}</p>
+        {!solo && ui.winner === null && !ui.moving && (
+          <span
+            className={`shrink-0 rounded-lg px-2 py-0.5 text-sm font-semibold tabular-nums ${secondsLeft <= 10 ? "bg-[#3a2228] text-[#ff9b92]" : "bg-white/5 text-white"}`}
+            aria-label={`${secondsLeft} segundos para tacar`}
+          >
+            ⏱ {secondsLeft}s
+          </span>
+        )}
+      </div>
       <p className="text-xs text-[var(--muted)]">
-        Clique perto da bola branca e puxe para trás: quanto mais longe, mais forte. Solte para tacar (soltar em cima da
-        branca cancela). Linha amarela: para onde a bola atingida vai.
+        O taco segue o mouse. Para tacar: clique e puxe para trás (mais longe = mais forte) e solte, ou segure o{" "}
+        <kbd className="rounded bg-white/10 px-1">espaço</kbd> para medir a força e solte. Setas ajustam a mira. Linha
+        amarela: para onde a bola atingida vai. Cada vez tem 30 segundos.
       </p>
     </div>
   );

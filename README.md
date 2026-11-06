@@ -15,7 +15,7 @@ Escritório 2D em pixel art onde a equipe anda, se esbarra e conversa por **voz 
 - WASD/setas, colisão com paredes e móveis, zoom, e `Ctrl + arrastar` para mover o mapa.
 - **Celular:** joystick, pinça para zoom, dois dedos para mover o mapa, barra compacta com menu "Mais" e instalação na tela inicial (PWA).
 - Clique em objetos: sentar em sofás, banquetas e pufes; abrir a geladeira, pegar café ou lanche.
-- Jogos de verdade nas mesas: pingue-pongue e totó para 2 pessoas em tempo real (ou contra o computador), **sinuca 8 ball** para 2 pessoas (lisas × listradas, faltas, bola na mão, puxar o taco para dar força e linhas de mira da branca e da bola atingida) e fliperama com recorde.
+- Jogos de verdade nas mesas: pingue-pongue e totó para 2 pessoas em tempo real (ou contra o computador), **sinuca 8 ball** para 2 pessoas (lisas × listradas, faltas, bola na mão, 30 s por tacada, puxar o taco ou segurar o espaço para dar força e linhas de mira da branca e da bola atingida) e fliperama com recorde.
 - Piscina: dá para nadar e pular da borda (barra de espaço).
 - Mesa fixa: cada pessoa escolhe a sua e passa a começar o dia sentada nela.
 
