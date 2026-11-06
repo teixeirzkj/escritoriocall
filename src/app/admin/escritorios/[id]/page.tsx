@@ -133,11 +133,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           Só entra na sede quem estiver aqui. Ao cadastrar, aparece um acesso com senha provisória para você enviar à pessoa.
         </p>
 
-        {full ? (
-          <p className="mb-5 rounded-xl border border-[var(--coral)]/30 bg-[var(--coral)]/10 px-3 py-2 text-sm text-[#ffb4ad]">
+        {/* O formulário fica sempre montado: assim o acesso de quem ocupou a última vaga não some da tela. */}
+        {full && (
+          <p className="mb-3 rounded-xl border border-[var(--coral)]/30 bg-[var(--coral)]/10 px-3 py-2 text-sm text-[#ffb4ad]">
             A sede atingiu o limite de {limit} usuários. Remova alguém ou fale com a gente para aumentar o plano.
           </p>
-        ) : (
+        )}
+        {(
           <ActionForm action={addOfficeUser} submitLabel="Cadastrar pessoa" pendingLabel="Cadastrando…" className="mb-5 space-y-3 rounded-xl border border-dashed border-white/15 p-4" resetOnSuccess>
             <input type="hidden" name="officeId" value={id} />
             <div className="grid gap-3 sm:grid-cols-[1fr_1.3fr_180px]">
