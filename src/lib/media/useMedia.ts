@@ -19,6 +19,8 @@ import { type BackgroundEffect, BLUR_RADIUS, imageFor, loadEffect, saveEffect } 
 
 export type MediaStatus =
   | "idle"
+  /** Proximidade sem ninguém por perto: desconectado do LiveKit (não gasta minutos). */
+  | "standby"
   | "connecting"
   | "connected"
   | "reconnecting"
@@ -66,7 +68,9 @@ interface Options {
 /**
  * Gerencia a conexão LiveKit do escritório.
  * Há sempre no máximo UMA sala conectada:
- *  - modo "proximity": sala do escritório com assinatura seletiva por distância;
+ *  - modo "proximity": sala do escritório com assinatura seletiva por distância. Só conecta
+ *    quando alguém está chegando perto (ou a pessoa compartilha a tela); sozinho, fica em
+ *    "standby", sem gastar minutos do LiveKit;
  *  - modo "room": sala de reunião isolada (quem está fora não ouve).
  */
 export function useMedia(opts: Options) {
@@ -105,6 +109,14 @@ export function useMedia(opts: Options) {
   const connectSeq = useRef(0);
   const retryRef = useRef(0);
   const connectRef = useRef<((t: MediaTarget) => Promise<boolean>) | null>(null);
+  /** Conexão em andamento (evita abrir duas ao mesmo tempo). */
+  const connectingRef = useRef(false);
+  /** Proximidade: alguém chegando perto agora. */
+  const anyoneNearRef = useRef(false);
+  /** Compartilhando a tela: mantém conectado mesmo sem ninguém por perto. */
+  const screenRef = useRef(false);
+  /** Desconexão adiada quando todo mundo se afasta (evita liga/desliga). */
+  const idleTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     cbRef.current = { onSpeakers: opts.onSpeakers, onError: opts.onError };
@@ -242,11 +254,8 @@ export function useMedia(opts: Options) {
     [applyBackground],
   );
 
-  const connect = useCallback(
-    async (t: MediaTarget): Promise<boolean> => {
-      const seq = ++connectSeq.current;
-      targetRef.current = t;
-      setTarget(t);
+  const connectInner = useCallback(
+    async (t: MediaTarget, seq: number): Promise<boolean> => {
       await disconnect();
       if (seq !== connectSeq.current) return false;
       setStatus("connecting");
@@ -323,7 +332,10 @@ export function useMedia(opts: Options) {
         .on(RoomEvent.TrackUnmuted, rebuild)
         .on(RoomEvent.LocalTrackPublished, rebuild)
         .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
-          if (pub.source === Track.Source.ScreenShare) setScreen(false);
+          if (pub.source === Track.Source.ScreenShare) {
+            setScreen(false);
+            screenRef.current = false;
+          }
           rebuild();
         })
         .on(RoomEvent.ParticipantConnected, (p) => {
@@ -349,6 +361,11 @@ export function useMedia(opts: Options) {
             return;
           }
           if (reason === DisconnectReason.CLIENT_INITIATED) return;
+          // Proximidade sem ninguém por perto: não precisa reconectar.
+          if (targetRef.current.kind === "proximity" && !anyoneNearRef.current && !screenRef.current) {
+            setStatus("standby");
+            return;
+          }
           // Queda inesperada: reconecta ao mesmo alvo com espera crescente.
           setStatus("reconnecting");
           const wait = Math.min(15000, 1000 * 2 ** retryRef.current++);
@@ -401,21 +418,82 @@ export function useMedia(opts: Options) {
     [officeId, disconnect, rebuild, applyFor, applyAll, applyBackground],
   );
 
+  const connect = useCallback(
+    async (t: MediaTarget): Promise<boolean> => {
+      const seq = ++connectSeq.current;
+      targetRef.current = t;
+      setTarget(t);
+      if (idleTimerRef.current !== null) {
+        window.clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+      connectingRef.current = true;
+      try {
+        return await connectInner(t, seq);
+      } finally {
+        if (seq === connectSeq.current) connectingRef.current = false;
+      }
+    },
+    [connectInner],
+  );
+
   useEffect(() => {
     connectRef.current = connect;
   }, [connect]);
 
-  // Conecta na proximidade ao montar; desconecta ao sair.
+  const statusRef = useRef<MediaStatus>("idle");
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+  const lastAttemptRef = useRef(0);
+
+  /**
+   * Proximidade: conecta quando alguém está chegando perto (ou há tela compartilhada) e
+   * desconecta 20 s depois que todos se afastam. Sozinho, não gasta minutos do LiveKit.
+   */
+  const syncProximity = useCallback(() => {
+    if (targetRef.current.kind !== "proximity") return;
+    const want = anyoneNearRef.current || screenRef.current;
+    if (want) {
+      if (idleTimerRef.current !== null) {
+        window.clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+      if (roomRef.current || connectingRef.current) return;
+      const st = statusRef.current;
+      if (st === "unconfigured" || st === "duplicate") return;
+      // Depois de uma falha, espera um pouco antes de tentar de novo.
+      if (st === "error" && Date.now() - lastAttemptRef.current < 15_000) return;
+      lastAttemptRef.current = Date.now();
+      void connectRef.current?.({ kind: "proximity" });
+      return;
+    }
+    if (!roomRef.current && !connectingRef.current) return;
+    if (idleTimerRef.current !== null) return;
+    idleTimerRef.current = window.setTimeout(() => {
+      idleTimerRef.current = null;
+      if (targetRef.current.kind !== "proximity" || anyoneNearRef.current || screenRef.current) return;
+      connectSeq.current++;
+      connectingRef.current = false;
+      void disconnect().then(() => setStatus("standby"));
+    }, 20_000);
+  }, [disconnect]);
+
+  // Ao montar: proximidade em espera (conecta quando alguém chegar perto); desconecta ao sair.
   useEffect(() => {
     const seq = connectSeq;
-    // Adiado para o próximo tick: evita conexão dupla no StrictMode (monta/desmonta/monta).
-    const timer = window.setTimeout(() => void connect({ kind: "proximity" }), 0);
+    const timer = window.setTimeout(() => {
+      setStatus("standby");
+      syncProximity();
+    }, 0);
     return () => {
       window.clearTimeout(timer);
+      if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
       seq.current++;
       void disconnect();
     };
-  }, [connect, disconnect]);
+  }, [disconnect, syncProximity]);
 
   const setMicEnabled = useCallback(
     async (next: boolean) => {
@@ -486,6 +564,14 @@ export function useMedia(opts: Options) {
   }, [rebuild, applyBackground]);
 
   const toggleScreen = useCallback(async () => {
+    // Em espera (ninguém por perto): conecta para poder compartilhar.
+    if (!roomRef.current && targetRef.current.kind === "proximity" && statusRef.current !== "unconfigured") {
+      screenRef.current = true;
+      if (!(await connectRef.current?.({ kind: "proximity" }))) {
+        screenRef.current = false;
+        return false;
+      }
+    }
     const room = roomRef.current;
     if (!room) {
       cbRef.current.onError("Conecte-se ao áudio/vídeo para compartilhar a tela");
@@ -508,15 +594,19 @@ export function useMedia(opts: Options) {
         },
       );
       setScreen(next);
+      screenRef.current = next;
+      if (!next) syncProximity();
     } catch (e) {
       setScreen(false);
+      screenRef.current = false;
+      syncProximity();
       const name = e instanceof Error ? e.name : "";
       if (name !== "NotAllowedError") cbRef.current.onError("Não foi possível compartilhar a tela");
       return false;
     }
     rebuild();
     return next;
-  }, [rebuild]);
+  }, [rebuild, syncProximity]);
 
   /** Recebe o resultado do cálculo de proximidade (modo proximity). */
   const setProximity = useCallback(
@@ -524,9 +614,11 @@ export function useMedia(opts: Options) {
       const m = new Map<string, ProximityResult>();
       for (const r of results) m.set(r.id, r);
       proximityRef.current = m;
+      anyoneNearRef.current = results.some((r) => r.approaching);
       applyAll();
+      syncProximity();
     },
-    [applyAll],
+    [applyAll, syncProximity],
   );
 
   const switchDevice = useCallback(async (kind: MediaDeviceKind, deviceId: string) => {
@@ -562,8 +654,24 @@ export function useMedia(opts: Options) {
     }, 60_000);
     return () => window.clearInterval(t);
   }, [status, target.kind, officeId]);
-  const leaveMeeting = useCallback(() => connect({ kind: "proximity" }), [connect]);
-  const retry = useCallback(() => connect(targetRef.current), [connect]);
+  /** Sai da reunião e volta para a proximidade (em espera até alguém chegar perto). */
+  const leaveMeeting = useCallback(async () => {
+    connectSeq.current++;
+    connectingRef.current = false;
+    targetRef.current = { kind: "proximity" };
+    setTarget({ kind: "proximity" });
+    await disconnect();
+    setStatus("standby");
+    syncProximity();
+    return true;
+  }, [disconnect, syncProximity]);
+  const retry = useCallback(() => {
+    if (targetRef.current.kind === "proximity" && !anyoneNearRef.current && !screenRef.current) {
+      setStatus("standby");
+      return Promise.resolve(true);
+    }
+    return connect(targetRef.current);
+  }, [connect]);
 
   return {
     status,

@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 import { createMyOffice, leaveOffice } from "@/app/escritorio/actions";
 import { ActionButton, ActionForm } from "@/components/admin/ActionForm";
 import { AppHeader } from "@/components/AppHeader";
+import { UsageAlert } from "@/components/admin/UsageAlert";
 import { requireUser } from "@/lib/auth";
+import { usageAlerts } from "@/lib/plan";
 import type { Office } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Minhas sedes" };
@@ -40,6 +42,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const roleOf = new Map((memberships ?? []).map((m) => [m.office_id as string, m.role as keyof typeof ROLE]));
   const list = (offices ?? []) as Office[];
   const error = sp.erro ? ERRORS[sp.erro] : undefined;
+  const alerts = profile.role === "admin" ? await usageAlerts() : [];
 
   return (
     <div className="min-h-dvh">
@@ -51,6 +54,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             ? "Escolha uma sede para entrar."
             : "Você ainda não tem acesso a nenhuma sede. Peça ao administrador(a) da sua empresa."}
         </p>
+        {alerts.length > 0 && (
+          <div className="mt-6">
+            <UsageAlert alerts={alerts} />
+          </div>
+        )}
         {error && (
           <div role="alert" className="mt-6 rounded-xl border border-[var(--coral)]/40 bg-[var(--coral)]/10 px-4 py-3 text-sm text-[#ffb4ad]">
             {error}

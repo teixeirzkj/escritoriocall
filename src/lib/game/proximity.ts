@@ -19,7 +19,15 @@ export interface ProximityResult {
   connected: boolean;
   /** Volume 0..1 a aplicar no áudio. */
   volume: number;
+  /**
+   * Está chegando perto (mesmo espaço, um pouco além do alcance da voz): a conexão de
+   * áudio/vídeo é aberta antes, para já estar pronta quando der para ouvir.
+   */
+  approaching: boolean;
 }
+
+/** Folga além do alcance da voz para abrir a conexão antes (px). */
+export const APPROACH_MARGIN = 160;
 
 /**
  * Duas pessoas compartilham o mesmo "espaço acústico" quando:
@@ -45,17 +53,19 @@ export function computeProximity(
     const distance = Math.hypot(p.x - me.x, p.y - me.y);
     // Quem está numa chamada de sala não participa da proximidade.
     if (me.roomId || p.roomId || me.dnd || p.dnd || !sameAcousticSpace(me.x, me.y, p.x, p.y)) {
-      return { id: p.id, distance, connected: false, volume: 0 };
+      return { id: p.id, distance, connected: false, volume: 0, approaching: false };
     }
+    const reach = mode === "cutoff" ? radius : radius * 1.5;
+    const approaching = distance <= reach + APPROACH_MARGIN;
     if (mode === "cutoff") {
       const connected = distance <= radius;
-      return { id: p.id, distance, connected, volume: connected ? 1 : 0 };
+      return { id: p.id, distance, connected, volume: connected ? 1 : 0, approaching };
     }
     // "fade": volume cheio até 50% do raio, cai suavemente até 0 em 150% do raio.
     const full = radius * 0.5;
     const max = radius * 1.5;
-    if (distance >= max) return { id: p.id, distance, connected: false, volume: 0 };
+    if (distance >= max) return { id: p.id, distance, connected: false, volume: 0, approaching };
     const volume = distance <= full ? 1 : 1 - (distance - full) / (max - full);
-    return { id: p.id, distance, connected: true, volume: Math.max(0.05, Math.min(1, volume)) };
+    return { id: p.id, distance, connected: true, volume: Math.max(0.05, Math.min(1, volume)), approaching };
   });
 }

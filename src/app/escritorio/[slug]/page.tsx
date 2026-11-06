@@ -103,6 +103,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         // Cadastro fechado: a equipe entra pelas contas criadas no painel (sem link de convite).
         inviteCode: null,
         logoUrl: office.logo_url || null,
+        brandBackgrounds: office.slug === "sede",
       }}
       rooms={roomInfos}
       desks={desks}

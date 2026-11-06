@@ -1,9 +1,10 @@
 import { ExternalLink } from "lucide-react";
 import type { Metadata } from "next";
-import { RoomServiceClient } from "livekit-server-sdk";
 import { requireAdmin } from "@/lib/auth";
-import { serverLiveKit } from "@/lib/env";
-import { ablyRest } from "@/lib/realtime/ably-server";
+import { savePlanLimits } from "@/app/admin/actions";
+import { ActionForm } from "@/components/admin/ActionForm";
+import { Labeled } from "@/components/admin/OfficeFields";
+import { type Meter, monthStart, usageMeters } from "@/lib/plan";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = { title: "Uso e custos" };
@@ -11,49 +12,25 @@ export const metadata: Metadata = { title: "Uso e custos" };
 const fmt = new Intl.NumberFormat("pt-BR");
 const hours = (min: number) => (min >= 60 ? `${fmt.format(Math.round((min / 60) * 10) / 10)} h` : `${min} min`);
 
-/** Primeiro dia do mês atual (horário de Brasília), "AAAA-MM-01". */
-function monthStart(): string {
-  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-}
-
-async function ablyMonth() {
-  try {
-    const page = await ablyRest().stats({ unit: "month", limit: 1, direction: "backwards" });
-    const e = page.items[0]?.entries ?? {};
-    return {
-      ok: true as const,
-      messages: e["messages.all.all.count"] ?? 0,
-      peakConnections: e["connections.all.peak"] ?? 0,
-      peakChannels: e["channels.peak"] ?? 0,
-    };
-  } catch (err) {
-    return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-async function liveKitNow() {
-  try {
-    const cfg = serverLiveKit();
-    const svc = new RoomServiceClient(cfg.httpUrl, cfg.apiKey, cfg.apiSecret);
-    const rooms = await svc.listRooms();
-    return { ok: true as const, rooms: rooms.length, participants: rooms.reduce((n, r) => n + (r.numParticipants ?? 0), 0) };
-  } catch (err) {
-    return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
 export default async function UsagePage() {
   await requireAdmin();
   const since = monthStart();
   const admin = supabaseAdmin();
-  const [{ data: rows }, ably, live] = await Promise.all([
-    admin.from("media_usage").select("day, user_id, kind, minutes").gte("day", since),
-    ablyMonth(),
-    liveKitNow(),
+  const [{ data: rows }, { meters, limits, ablyOk, liveOk }, { data: officeRows }] = await Promise.all([
+    admin.from("media_usage").select("day, office_id, user_id, kind, minutes").gte("day", since),
+    usageMeters(),
+    admin.from("offices").select("id, name"),
   ]);
 
-  const usage = (rows ?? []) as { day: string; user_id: string; kind: "proximity" | "meeting"; minutes: number }[];
+  const usage = (rows ?? []) as { day: string; office_id: string; user_id: string; kind: "proximity" | "meeting"; minutes: number }[];
+  const officeName = new Map((officeRows ?? []).map((o) => [o.id as string, o.name as string]));
+  const byOffice = new Map<string, number>();
+  for (const r of usage) byOffice.set(r.office_id, (byOffice.get(r.office_id) ?? 0) + r.minutes);
+  const offices = Array.from(byOffice, ([id, m]) => ({ id, name: officeName.get(id) ?? "Sede excluída", m })).sort((x, y) => y.m - x.m);
+  // Projeção: ritmo do mês até hoje estendido ao mês inteiro.
+  const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const projected = Math.round((usage.reduce((n, r) => n + r.minutes, 0) / today.getDate()) * daysInMonth);
   const total = usage.reduce((n, r) => n + r.minutes, 0);
   const prox = usage.filter((r) => r.kind === "proximity").reduce((n, r) => n + r.minutes, 0);
   const meet = total - prox;
@@ -84,38 +61,71 @@ export default async function UsagePage() {
       <div>
         <h1 className="font-pixel text-2xl text-white">Uso e custos</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Mês atual (desde {since.split("-").reverse().join("/")}). Compare com o limite do seu plano nos painéis do LiveKit e do Ably.
+          Mês atual (desde {since.split("-").reverse().join("/")}), somando todas as sedes.
         </p>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-3">
-        <Card title="LiveKit · minutos de participante" value={hours(total)} hint={`${fmt.format(total)} min no mês`} />
-        <Card title="Proximidade (andando pelo mapa)" value={hours(prox)} hint="conta o tempo todo em que a pessoa está online" />
-        <Card title="Reuniões (salas)" value={hours(meet)} hint="tempo dentro das salas de reunião" />
+      <section className="card p-4">
+        <h2 className="mb-1 font-semibold text-white">Uso do plano</h2>
+        <p className="mb-4 text-xs text-[var(--muted)]">
+          Aviso no painel ao passar de 70% (amarelo) e de 90% (vermelho). No plano gratuito do LiveKit, ao chegar em 100% a voz e
+          o vídeo param de conectar até virar o mês.
+        </p>
+        <div className="space-y-4">
+          {meters.map((m) => (
+            <MeterBar key={m.key} m={m} />
+          ))}
+        </div>
+        {!liveOk && <p className="mt-3 text-xs text-[#ff9b92]">Não foi possível consultar o LiveKit agora.</p>}
+        {!ablyOk && <p className="mt-1 text-xs text-[#ff9b92]">Não foi possível ler o uso do Ably.</p>}
+        <p className="mt-4 text-xs text-[var(--muted)]">
+          No ritmo atual, o mês fecha com cerca de <strong className="text-white">{fmt.format(projected)} min</strong> de LiveKit
+          {" "}({fmt.format(Math.round((projected / limits.livekit_minutes) * 100))}% do limite). Proximidade: {hours(prox)} · reuniões: {hours(meet)}.
+        </p>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-3">
-        {ably.ok ? (
-          <>
-            <Card title="Ably · mensagens no mês" value={fmt.format(ably.messages)} hint="movimento, presença, chat e avisos" />
-            <Card title="Ably · pico de conexões" value={fmt.format(ably.peakConnections)} hint="pessoas conectadas ao mesmo tempo" />
-            <Card title="Ably · pico de canais" value={fmt.format(ably.peakChannels)} hint="canais abertos ao mesmo tempo" />
-          </>
+      <section className="card p-4">
+        <h2 className="mb-3 font-semibold text-white">Minutos de LiveKit por sede</h2>
+        {offices.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">Ainda sem registros neste mês.</p>
         ) : (
-          <div className="card p-4 text-sm text-[#ff9b92] sm:col-span-3">Não foi possível ler o uso do Ably: {ably.error}</div>
+          <ul className="divide-y divide-white/5 text-sm">
+            {offices.map((o) => (
+              <li key={o.id} className="flex items-center justify-between gap-3 py-2">
+                <span className="text-white">{o.name}</span>
+                <span className="tabular-nums text-[var(--muted)]">
+                  {hours(o.m)} · {fmt.format(Math.round((o.m / Math.max(1, total)) * 100))}%
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
       <section className="card p-4">
-        <h2 className="mb-1 font-semibold text-white">Agora</h2>
-        {live.ok ? (
-          <p className="text-sm text-[var(--muted)]">
-            {live.participants} {live.participants === 1 ? "pessoa conectada" : "pessoas conectadas"} ao áudio/vídeo em {live.rooms}{" "}
-            {live.rooms === 1 ? "sala" : "salas"} do LiveKit.
-          </p>
-        ) : (
-          <p className="text-sm text-[#ff9b92]">Não foi possível consultar o LiveKit: {live.error}</p>
-        )}
+        <h2 className="mb-1 font-semibold text-white">Limites do plano contratado</h2>
+        <p className="mb-4 text-xs text-[var(--muted)]">
+          Já preenchidos com os planos gratuitos. Ao mudar de plano no LiveKit ou no Ably, atualize aqui para os avisos ficarem certos.
+        </p>
+        <ActionForm action={savePlanLimits} submitLabel="Salvar limites" className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Labeled label="LiveKit · minutos por mês">
+              <input name="livekit_minutes" type="number" min={1} required defaultValue={limits.livekit_minutes} className="input h-10 text-sm" />
+            </Labeled>
+            <Labeled label="LiveKit · conectados ao mesmo tempo">
+              <input name="livekit_concurrent" type="number" min={1} required defaultValue={limits.livekit_concurrent} className="input h-10 text-sm" />
+            </Labeled>
+            <Labeled label="Ably · mensagens por mês">
+              <input name="ably_messages" type="number" min={1} required defaultValue={limits.ably_messages} className="input h-10 text-sm" />
+            </Labeled>
+            <Labeled label="Ably · conexões simultâneas">
+              <input name="ably_connections" type="number" min={1} required defaultValue={limits.ably_connections} className="input h-10 text-sm" />
+            </Labeled>
+            <Labeled label="Ably · canais simultâneos">
+              <input name="ably_channels" type="number" min={1} required defaultValue={limits.ably_channels} className="input h-10 text-sm" />
+            </Labeled>
+          </div>
+        </ActionForm>
       </section>
 
       <section className="card p-4">
@@ -179,12 +189,20 @@ export default async function UsagePage() {
   );
 }
 
-function Card({ title, value, hint }: { title: string; value: string; hint: string }) {
+function MeterBar({ m }: { m: Meter }) {
+  const color = m.level === "danger" ? "bg-[var(--coral)]" : m.level === "warn" ? "bg-amber-400" : "bg-emerald-400";
   return (
-    <div className="card p-4">
-      <div className="text-xs text-[var(--muted)]">{title}</div>
-      <div className="mt-1 font-pixel text-2xl text-white">{value}</div>
-      <div className="mt-1 text-[11px] text-[var(--muted)]">{hint}</div>
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+        <span className="text-white">{m.label}</span>
+        <span className="tabular-nums text-[var(--muted)]">
+          {fmt.format(m.used)} de {fmt.format(m.limit)} · <strong className="text-white">{fmt.format(m.pct)}%</strong>
+        </span>
+      </div>
+      <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-white/10" role="meter" aria-valuenow={m.pct} aria-valuemin={0} aria-valuemax={100} aria-label={m.label}>
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, m.pct)}%` }} />
+      </div>
+      <div className="mt-1 text-[11px] text-[var(--muted)]">{m.hint}</div>
     </div>
   );
 }

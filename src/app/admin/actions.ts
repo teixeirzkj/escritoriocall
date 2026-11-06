@@ -18,6 +18,7 @@ import {
 import { isThemeValue } from "@/lib/brand";
 import { newInviteCode, officeSlug } from "@/lib/invite";
 import { deskCountFor, layoutOptionsSchema, parseLayout } from "@/lib/office-layout";
+import { clearUsageCache, planLimitsSchema } from "@/lib/plan";
 import { rateLimit } from "@/lib/rate-limit";
 import { publishServer } from "@/lib/realtime/ably-server";
 import { ch, lk, type ControlMsg } from "@/lib/realtime/channels";
@@ -721,6 +722,26 @@ export async function removeLogo(_prev: ActionResult, fd: FormData): Promise<Act
     await notify(officeId, { type: "rooms-updated" });
     revalidatePath(`/admin/escritorios/${officeId}`);
     return { ok: true, message: "Logo removida." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Limites dos planos (avisos de uso)
+// ---------------------------------------------------------------------------
+
+export async function savePlanLimits(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  try {
+    await assertAdmin();
+    const value = planLimitsSchema.parse(Object.fromEntries(fd));
+    const { error } = await supabaseAdmin()
+      .from("platform_settings")
+      .upsert({ key: "plan_limits", value, updated_at: new Date().toISOString() });
+    if (error) throw error;
+    clearUsageCache();
+    revalidatePath("/admin/uso");
+    return { ok: true, message: "Limites salvos." };
   } catch (e) {
     return fail(e);
   }

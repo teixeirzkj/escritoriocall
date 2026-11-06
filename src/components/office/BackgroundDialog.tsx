@@ -8,6 +8,7 @@ import {
   loadCustomImage,
   prepareCustomImage,
   PRESETS,
+  presetsAvailable,
   saveCustomImage,
 } from "@/lib/media/backgrounds";
 import type { VideoTile } from "@/lib/media/useMedia";
@@ -110,7 +111,7 @@ export function BackgroundDialog({ effect, camOn, localCam, onChange, onTurnOnCa
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--amber)]">Fundos</h3>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {PRESETS.map((p) => (
+              {(presetsAvailable() ? PRESETS : []).map((p) => (
                 <OptionCard key={p.id} selected={same(effect, { mode: "image", id: p.id })} disabled={busy} label={p.label} onPick={() => void pick({ mode: "image", id: p.id })}>
                   {/* eslint-disable-next-line @next/next/no-img-element -- imagem gerada localmente (data URL) */}
                   <img src={thumbs[p.id]} alt="" className="h-full w-full object-cover" />

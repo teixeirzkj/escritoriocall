@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_AVATAR, parseAvatar } from "@/lib/avatar";
 import { TILE } from "@/lib/game/map";
-import { computeProximity, sameAcousticSpace } from "@/lib/game/proximity";
+import { APPROACH_MARGIN, computeProximity, sameAcousticSpace } from "@/lib/game/proximity";
 import { rateLimit } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-next";
 
@@ -148,5 +148,30 @@ describe("não perturbe", () => {
     const [b] = computeProximity({ ...P, roomId: null }, [{ id: "x", x: P.x + 10, y: P.y, roomId: null, dnd: true }], 200, "cutoff");
     expect(a.connected).toBe(false);
     expect(b.connected).toBe(false);
+  });
+});
+
+describe("conexão só com alguém por perto", () => {
+  const me = { x: 1000, y: 352, roomId: null };
+  it("marca quem está chegando (um pouco além do alcance da voz)", () => {
+    const [a, b, c] = computeProximity(
+      me,
+      [
+        { id: "a", x: 1100, y: 352, roomId: null },
+        { id: "b", x: 1000 + 200 * 1.5 + APPROACH_MARGIN - 10, y: 352, roomId: null },
+        { id: "c", x: 1000 + 200 * 1.5 + APPROACH_MARGIN + 40, y: 352, roomId: null },
+      ],
+      200,
+      "fade",
+    );
+    expect(a).toMatchObject({ connected: true, approaching: true });
+    expect(b).toMatchObject({ connected: false, approaching: true });
+    expect(c).toMatchObject({ connected: false, approaching: false });
+  });
+  it("ninguém chega perto de quem está em reunião ou em Não perturbe", () => {
+    const [r] = computeProximity({ ...me, roomId: "sala" }, [{ id: "a", x: 1010, y: 352, roomId: null }], 200, "fade");
+    const [d] = computeProximity(me, [{ id: "a", x: 1010, y: 352, roomId: null, dnd: true }], 200, "cutoff");
+    expect(r.approaching).toBe(false);
+    expect(d.approaching).toBe(false);
   });
 });

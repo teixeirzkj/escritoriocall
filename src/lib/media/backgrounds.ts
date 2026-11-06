@@ -13,13 +13,22 @@ export type BackgroundEffect =
 export const BLUR_RADIUS = { light: 6, strong: 16 } as const;
 
 const KEY = "fredy:fundo";
+
+/** Fundos prontos (paredes e Frédy) só na sede da Tete à tete; nas outras, só desfoque e imagem própria. */
+let presetsEnabled = true;
+export function setPresetsEnabled(v: boolean) {
+  presetsEnabled = v;
+}
+export function presetsAvailable() {
+  return presetsEnabled;
+}
 const CUSTOM_KEY = "fredy:fundo-personalizado";
 
 export function loadEffect(): BackgroundEffect {
   try {
     const v = JSON.parse(window.localStorage.getItem(KEY) ?? "null") as BackgroundEffect | null;
     if (v?.mode === "blur" && (v.strength === "light" || v.strength === "strong")) return v;
-    if (v?.mode === "image" && typeof v.id === "string") return v;
+    if (v?.mode === "image" && typeof v.id === "string" && (v.id === "personalizado" || presetsEnabled)) return v;
   } catch {
     /* sem armazenamento */
   }
@@ -179,6 +188,7 @@ const cache = new Map<string, string>();
 /** URL (data:) da imagem de um fundo, gerando e guardando em cache. */
 export function imageFor(id: string): string | null {
   if (id === "personalizado") return loadCustomImage();
+  if (!presetsEnabled) return null;
   const hit = cache.get(id);
   if (hit) return hit;
   const p = PRESETS.find((x) => x.id === id);

@@ -9,6 +9,8 @@ interface Props {
   realtimeState: RealtimeState;
   mediaStatus: MediaStatus;
   mediaError: string | null;
+  /** Câmera ligada (para avisar que ela aparece quando alguém chegar perto). */
+  camOn?: boolean;
   audioBlocked: boolean;
   onStartAudio: () => void;
   onRetryMedia: () => void;
@@ -71,6 +73,9 @@ export function StatusLayer(p: Props) {
           <Banner tone="muted">
             Áudio e vídeo indisponíveis: configure <code>LIVEKIT_URL</code>, <code>LIVEKIT_API_KEY</code> e <code>LIVEKIT_API_SECRET</code>.
           </Banner>
+        )}
+        {p.mediaStatus === "standby" && p.camOn && (
+          <Banner tone="muted">Ninguém por perto: sua câmera aparece para quem chegar perto de você.</Banner>
         )}
         {p.mediaStatus === "duplicate" && <Banner tone="warn">Áudio/vídeo conectado em outra aba.</Banner>}
         {p.mediaStatus === "error" && (

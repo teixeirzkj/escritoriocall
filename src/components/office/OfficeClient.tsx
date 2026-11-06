@@ -18,6 +18,7 @@ import { loadStatus, saveStatus, type StatusKey, statusInfo } from "@/lib/status
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { RoomInfo, UserSettings } from "@/lib/types";
 import { BackgroundDialog } from "./BackgroundDialog";
+import { setPresetsEnabled } from "@/lib/media/backgrounds";
 import { InviteLink } from "@/components/admin/InviteLink";
 import { ChatPanel } from "./ChatPanel";
 import { ControlBar } from "./ControlBar";
@@ -52,6 +53,8 @@ export interface OfficeClientProps {
     inviteCode: string | null;
     /** Logo da empresa. */
     logoUrl: string | null;
+    /** Fundos de câmera prontos (só a sede da Tete à tete). */
+    brandBackgrounds: boolean;
   };
   /** Mapa da sede (null = mapa clássico). */
   layout: LayoutSpec | null;
@@ -66,7 +69,10 @@ type Panel = "none" | "participants" | "chat";
 
 export function OfficeClient({ office, layout, rooms, desks, me, settings: initialSettings }: OfficeClientProps) {
   // Antes de tudo: o mapa desta sede (salas, mesas, lazer) vira o mapa atual.
-  useState(() => applyOfficeMap(layout));
+  useState(() => {
+    applyOfficeMap(layout);
+    setPresetsEnabled(office.brandBackgrounds);
+  });
   const router = useRouter();
   // Quem tem mesa fixa começa sentado nela.
   const [startAt] = useState(() => {
@@ -1277,7 +1283,7 @@ export function OfficeClient({ office, layout, rooms, desks, me, settings: initi
         mic={media.mic}
         cam={media.cam}
         screen={media.screen}
-        mediaReady={media.status === "connected"}
+        mediaReady={media.status === "connected" || media.status === "standby"}
         mediaStatus={media.status}
         inMeeting={inMeeting}
         panel={panel}
@@ -1375,6 +1381,7 @@ export function OfficeClient({ office, layout, rooms, desks, me, settings: initi
         realtimeState={rt.state}
         mediaStatus={media.status}
         mediaError={media.lastError}
+        camOn={media.cam}
         audioBlocked={media.audioBlocked}
         onStartAudio={media.startAudio}
         onRetryMedia={media.retry}
